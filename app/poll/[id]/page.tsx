@@ -275,17 +275,18 @@ export default function PollPage() {
         ← Back
       </button>
 
-      {/* Question — always at top */}
+      {/* Question — centered, kept away from moon (top-right) */}
       <div
         className="cosmos-fade-up"
         style={{
-          position: 'absolute', top: '14%', left: '50%',
-          transform: 'translateX(-50%)', maxWidth: 'min(540px, 90vw)',
+          position: 'absolute', top: '12%',
+          left: '50%', transform: 'translateX(-50%)',
+          maxWidth: 'min(520px, 68vw)',
           textAlign: 'center', zIndex: 5,
         }}
       >
         <p style={{
-          fontSize: 'clamp(20px, 4vw, 30px)', fontWeight: 700,
+          fontSize: 'clamp(20px, 3.5vw, 28px)', fontWeight: 700,
           color: textColor, lineHeight: 1.3, margin: 0,
         }}>
           {poll.question}
@@ -312,7 +313,7 @@ export default function PollPage() {
             const r = stage === 'results'
               ? planetR * (0.8 + (pct / 100) * 0.6)
               : planetR;
-            const parallaxK = 12;
+            const parallaxK = stage === 'results' ? 8 : 0;
             return (
               <button
                 key={choice}
@@ -328,7 +329,7 @@ export default function PollPage() {
                   border: 'none', padding: 0,
                   cursor: (stage === 'voting' || canChange) ? 'pointer' : 'default',
                   background: 'transparent',
-                  transform: `translate3d(${mouse.x * parallaxK}px, ${mouse.y * parallaxK * 0.5}px, 0)`,
+                  transform: parallaxK > 0 ? `translate3d(${mouse.x * parallaxK}px, ${mouse.y * parallaxK * 0.5}px, 0)` : undefined,
                   transition: 'width 0.8s ease, height 0.8s ease, left 0.8s ease, top 0.8s ease',
                   zIndex: 10,
                 }}

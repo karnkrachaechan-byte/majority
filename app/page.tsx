@@ -304,12 +304,21 @@ export default function Home() {
 }
 
 function Stars({ vw, vh }: { vw: number; vh: number }) {
-  const stars = useMemo(() => {
+  const { stars, shootingStars } = useMemo(() => {
     const rng = mulberry32(42)
-    return Array.from({ length: 90 }, (_, i) => ({
+    const stars = Array.from({ length: 90 }, (_, i) => ({
       x: rng() * vw, y: rng() * vh * 0.88,
       size: 0.8 + rng() * 2, delay: rng() * 6, key: i,
     }))
+    const rng2 = mulberry32(77)
+    const shootingStars = Array.from({ length: 4 }, (_, i) => ({
+      x: rng2() * vw * 0.6,
+      y: rng2() * vh * 0.4,
+      duration: 5 + rng2() * 6,
+      delay: rng2() * 14,
+      key: i,
+    }))
+    return { stars, shootingStars }
   }, [vw, vh])
 
   return (
@@ -320,6 +329,13 @@ function Stars({ vw, vh }: { vw: number; vh: number }) {
           width: s.size, height: s.size, borderRadius: '50%',
           background: '#fff', opacity: 0.55,
           animation: `cosmosTwinkle 3.5s ease-in-out ${s.delay}s infinite`,
+        }} />
+      ))}
+      {shootingStars.map(s => (
+        <div key={s.key} className="shooting-star" style={{
+          left: s.x, top: s.y,
+          animationDuration: `${s.duration}s`,
+          animationDelay: `${s.delay}s`,
         }} />
       ))}
     </div>

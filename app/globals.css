@@ -159,3 +159,19 @@ body.night {
   position: relative;
   overflow: hidden;
 }
+
+@keyframes cosmosShootingStar {
+  0%   { transform: translate(0, 0) rotate(-42deg); opacity: 0; width: 0px; }
+  5%   { opacity: 1; }
+  40%  { opacity: 0.9; width: 90px; }
+  100% { transform: translate(380px, 380px) rotate(-42deg); opacity: 0; width: 0px; }
+}
+
+.shooting-star {
+  position: absolute;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 100%);
+  border-radius: 100px;
+  animation: cosmosShootingStar linear infinite;
+  pointer-events: none;
+}
