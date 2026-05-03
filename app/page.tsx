@@ -21,6 +21,14 @@ function formatVotes(n: number): string {
   return String(n)
 }
 
+function textOnColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return lum > 0.58 ? 'rgba(25,15,55,0.9)' : '#fff'
+}
+
 function det(id: string, salt: number): number {
   let h = 2166136261 ^ salt
   for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619) }
@@ -240,9 +248,9 @@ export default function Home() {
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)' }}
               >
                 <span style={{
-                  color: '#fff', fontWeight: 700,
+                  color: textOnColor(color), fontWeight: 700,
                   fontSize: r > 95 ? 16 : r > 70 ? 14 : 12,
-                  lineHeight: 1.3, textShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                  lineHeight: 1.3, textShadow: '0 1px 6px rgba(0,0,0,0.15)',
                   display: '-webkit-box', WebkitLineClamp: 3,
                   WebkitBoxOrient: 'vertical', overflow: 'hidden',
                   maxWidth: '80%',
@@ -250,7 +258,7 @@ export default function Home() {
                   {poll.question}
                 </span>
                 {poll.voteCount > 0 && (
-                  <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: r > 80 ? 11 : 10, marginTop: 6, fontWeight: 600, textShadow: '0 1px 4px rgba(0,0,0,0.3)' }}>
+                  <span style={{ color: textOnColor(color), opacity: 0.7, fontSize: r > 80 ? 11 : 10, marginTop: 6, fontWeight: 600 }}>
                     {formatVotes(poll.voteCount)} · {pctA}/{pctB}
                   </span>
                 )}
@@ -312,10 +320,10 @@ function Stars({ vw, vh }: { vw: number; vh: number }) {
     }))
     const rng2 = mulberry32(77)
     const shootingStars = Array.from({ length: 4 }, (_, i) => ({
-      x: rng2() * vw * 0.6,
-      y: rng2() * vh * 0.4,
-      duration: 5 + rng2() * 6,
-      delay: rng2() * 14,
+      x: vw * 0.4 + rng2() * vw * 0.55, // start from right half
+      y: rng2() * vh * 0.35,
+      duration: 6 + rng2() * 7,
+      delay: rng2() * 16,
       key: i,
     }))
     return { stars, shootingStars }
