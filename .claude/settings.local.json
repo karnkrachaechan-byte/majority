@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm cache *)",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --yes)",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --yes --name majority)",
+      "Read(//Users/karn/Desktop/Personal one/**)",
+      "Bash(npx create-next-app@latest majority --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --yes)",
+      "Bash(npm install *)",
+      "Bash(node_modules/.bin/next --version)",
+      "Bash(npx next *)",
+      "Read(//private/tmp/**)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({path:'.env.local'}\\); console.log\\('URL:', process.env.NEXT_PUBLIC_SUPABASE_URL\\); console.log\\('KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY\\)\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const content=fs.readFileSync\\('.env.local','utf8'\\); console.log\\(JSON.stringify\\(content\\)\\)\")",
+      "Bash(xxd)",
+      "Bash(npm run *)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}
