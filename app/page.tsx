@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { assignPalette } from '@/lib/theme'
 import { useDayNight } from '@/components/cosmos/useDayNight'
 import { useViewport } from '@/components/cosmos/useOrbit'
 
@@ -91,11 +92,10 @@ export default function Home() {
       const spread = i === 0 ? 0 : 120 + i * 56
       const x = cx + Math.cos(angle) * spread + (det(poll.id, 20) - 0.5) * 36
       const y = cy + Math.sin(angle) * spread * 0.45 + (det(poll.id, 21) - 0.5) * 22
-      const palette = day ? DAY_COLORS : NIGHT_COLORS
-      const color = palette[Math.floor(det(poll.id, 22) * palette.length)]
+      const { colorA, colorB } = assignPalette(poll.id)
       const floatDur = 4 + det(poll.id, 23) * 3
       const floatDelay = -det(poll.id, 24) * 5
-      return { poll, r, x, y, color, floatDur, floatDelay }
+      return { poll, r, x, y, colorA, colorB, floatDur, floatDelay }
     })
   }, [polls, vw, vh, day])
 
@@ -222,9 +222,10 @@ export default function Home() {
       {/* Planet cluster */}
       {!loading && polls.length > 0 && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 5 }}>
-          {planets.map(({ poll, r, x, y, color, floatDur, floatDelay }) => {
+          {planets.map(({ poll, r, x, y, colorA, colorB, floatDur, floatDelay }) => {
             const pctA = poll.totals.total > 0 ? Math.round(poll.totals.a / poll.totals.total * 100) : 50
             const pctB = 100 - pctA
+            const gradient = `radial-gradient(circle at 38% 32%, ${colorA} 0%, ${colorB} 100%)`
             return (
               <button
                 key={poll.id}
@@ -235,8 +236,8 @@ export default function Home() {
                   position: 'absolute',
                   left: x - r, top: y - r, width: r * 2, height: r * 2,
                   borderRadius: '50%', border: 'none', cursor: 'pointer',
-                  background: color,
-                  boxShadow: `0 12px 48px ${color}66, 0 4px 16px rgba(0,0,0,0.15)`,
+                  background: gradient,
+                  boxShadow: `0 12px 48px ${colorA}55, 0 4px 24px ${colorB}44`,
                   display: 'flex', flexDirection: 'column',
                   alignItems: 'center', justifyContent: 'center',
                   textAlign: 'center', padding: '12%',
@@ -248,9 +249,9 @@ export default function Home() {
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)' }}
               >
                 <span style={{
-                  color: textOnColor(color), fontWeight: 700,
+                  color: '#fff', fontWeight: 700,
                   fontSize: r > 95 ? 16 : r > 70 ? 14 : 12,
-                  lineHeight: 1.3, textShadow: '0 1px 6px rgba(0,0,0,0.15)',
+                  lineHeight: 1.3, textShadow: '0 1px 8px rgba(0,0,0,0.35)',
                   display: '-webkit-box', WebkitLineClamp: 3,
                   WebkitBoxOrient: 'vertical', overflow: 'hidden',
                   maxWidth: '80%',
@@ -258,7 +259,7 @@ export default function Home() {
                   {poll.question}
                 </span>
                 {poll.voteCount > 0 && (
-                  <span style={{ color: textOnColor(color), opacity: 0.7, fontSize: r > 80 ? 11 : 10, marginTop: 6, fontWeight: 600 }}>
+                  <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: r > 80 ? 11 : 10, marginTop: 6, fontWeight: 600 }}>
                     {formatVotes(poll.voteCount)} · {pctA}/{pctB}
                   </span>
                 )}
