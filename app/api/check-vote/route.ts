@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
   const { data } = await supabaseAdmin
     .from('votes')
-    .select('choice, can_change_until')
+    .select('choice, can_change_until, voter_age')
     .eq('poll_id', pollId)
     .or(`fingerprint.eq.${fingerprint},ip_address.eq.${ip}`)
     .single()

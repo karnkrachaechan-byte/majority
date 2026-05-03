@@ -119,7 +119,7 @@ export default function PollPage() {
         setSelectedChoice(voteData.vote.choice)
         setCanChange(new Date() < new Date(voteData.vote.can_change_until))
         await fetchVoteData()
-        setStage('results')
+        setStage(voteData.vote.voter_age == null ? 'demographic' : 'results')
       }
 
       setLoading(false)
