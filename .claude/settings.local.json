@@ -22,7 +22,15 @@
       "Bash(gh repo *)",
       "Bash(git remote *)",
       "Bash(git push *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(git --version)",
+      "Bash(gh --version)",
+      "Bash(npm --version)",
+      "Bash(unzip -o \"/Users/karn/Downloads/Majority.zip\" -d /tmp/majority-handoff)",
+      "Read(//tmp/**)",
+      "Bash(git checkout *)",
+      "Bash(git pull *)",
+      "Bash(gh pr *)"
     ]
   }
 }
