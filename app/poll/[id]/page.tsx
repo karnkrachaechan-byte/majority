@@ -280,8 +280,8 @@ export default function PollPage() {
         className="cosmos-fade-up"
         style={{
           position: 'absolute', top: '12%',
-          left: '50%', transform: 'translateX(-50%)',
-          maxWidth: 'min(520px, 68vw)',
+          left: 0, right: 0,
+          padding: '0 10%',
           textAlign: 'center', zIndex: 5,
         }}
       >
