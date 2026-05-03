@@ -113,3 +113,48 @@ body.night {
     gap: 24px;
   }
 }
+/* claude-code-handoff/app/globals.css
+ *
+ * APPEND-ONLY PATCH — paste these rules at the bottom of your existing
+ * `app/globals.css`. Do NOT delete the existing `float`, `zoomFill`,
+ * `fadeIn`, `bubble*`, `vote-bubble*`, or `vote-row` rules.
+ */
+
+/* ═══════ Cosmos additions ═══════ */
+
+@keyframes cosmosCloudDrift {
+  0%   { transform: translateX(-120px) scale(var(--s, 1)); }
+  100% { transform: translateX(120vw)  scale(var(--s, 1)); }
+}
+
+@keyframes cosmosTwinkle {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 0.85; }
+}
+
+@keyframes cosmosPulse {
+  0%, 100% { transform: scale(1);    opacity: 0.5; }
+  50%      { transform: scale(1.18); opacity: 0;   }
+}
+
+@keyframes cosmosFadeUp {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+.cosmos-fade-up {
+  animation: cosmosFadeUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Freeze all Cosmos motion — content stays readable */
+  [class*="cosmos-"], .cosmos-fade-up { animation: none !important; }
+}
+
+/* Use dvh on mobile so iOS chrome doesn't crop the orbit */
+.cosmos-stage {
+  width: 100vw;
+  height: 100dvh;
+  position: relative;
+  overflow: hidden;
+}
