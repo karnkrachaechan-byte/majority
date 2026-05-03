@@ -1,193 +1,162 @@
-'use client'
+// app/page.tsx
+//
+// Home page — Cosmos orbit. Replaces the wrap-grid version.
+// Same data layer (Supabase polls + votes), same Next.js App Router.
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { isDay, getBubbleColors, getRandomColor } from '@/lib/theme'
+'use client';
 
-interface Poll {
-  id: string
-  question: string
-  option_1: string
-  option_2: string
-  voteCount: number
-}
-
-interface BubbleData extends Poll {
-  size: number
-  color: string
-  animDuration: number
-  animDelay: number
-}
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import { CosmosScene } from '@/components/cosmos/CosmosScene';
+import { useDayNight } from '@/components/cosmos/useDayNight';
+import type { PollWithVotes, VoteTotals } from '@/components/cosmos/types';
 
 export default function Home() {
-  const router = useRouter()
-  const [polls, setPolls] = useState<BubbleData[]>([])
-  const [loading, setLoading] = useState(true)
-  const [day, setDay] = useState(true)
-  const [zoomingId, setZoomingId] = useState<string | null>(null)
-
-  useEffect(() => {
-    const dayMode = isDay()
-    setDay(dayMode)
-    document.body.className = dayMode ? 'day' : 'night'
-  }, [])
+  const router = useRouter();
+  const day = useDayNight();
+  const [polls, setPolls] = useState<PollWithVotes[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchPolls() {
       const { data: pollData } = await supabase
         .from('polls')
-        .select('id, question, option_1, option_2')
+        .select('id, question, option_1, option_2, expires_at')
         .eq('is_active', true)
         .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false });
 
       if (!pollData || pollData.length === 0) {
-        setPolls([])
-        setLoading(false)
-        return
+        setPolls([]);
+        setLoading(false);
+        return;
       }
 
-      // Fetch vote counts for all polls
+      const ids = pollData.map((p) => p.id);
       const { data: voteData } = await supabase
         .from('votes')
-        .select('poll_id')
-        .in('poll_id', pollData.map(p => p.id))
+        .select('poll_id, choice')
+        .in('poll_id', ids);
 
-      const voteCounts: Record<string, number> = {}
-      voteData?.forEach(v => {
-        voteCounts[v.poll_id] = (voteCounts[v.poll_id] || 0) + 1
-      })
+      const totalsByPoll: Record<string, VoteTotals> = {};
+      voteData?.forEach((v) => {
+        const t = totalsByPoll[v.poll_id] ?? { a: 0, b: 0, total: 0 };
+        if (v.choice === 1) t.a++;
+        if (v.choice === 2) t.b++;
+        t.total = t.a + t.b;
+        totalsByPoll[v.poll_id] = t;
+      });
 
-      const colors = getBubbleColors()
-      const bubbles: BubbleData[] = pollData
-        .map((poll) => ({
-          ...poll,
-          voteCount: voteCounts[poll.id] || 0,
-          size: 150 + Math.random() * 80,
-          color: getRandomColor(colors),
-          animDuration: 5 + Math.random() * 5,
-          animDelay: -(Math.random() * 8),
-        }))
-        .sort((a, b) => b.voteCount - a.voteCount)
-
-      setPolls(bubbles)
-      setLoading(false)
+      setPolls(
+        pollData.map((p) => {
+          const totals = totalsByPoll[p.id] ?? { a: 0, b: 0, total: 0 };
+          return { ...p, voteCount: totals.total, totals };
+        })
+      );
+      setLoading(false);
     }
-    fetchPolls()
-  }, [])
+    fetchPolls();
+  }, []);
 
-  function handleClick(poll: BubbleData) {
-    if (zoomingId) return
-    setZoomingId(poll.id)
-    setTimeout(() => router.push(`/poll/${poll.id}`), 600)
-  }
-
-  const textColor = day ? '#111' : '#f0f0f0'
-  const subColor = day ? '#666' : '#999'
+  const textColor = day ? '#1a1a2e' : '#f0f0f8';
+  const subColor = day ? '#5a5a6e' : '#9a9aae';
 
   return (
-    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', position: 'relative' }}>
-
-      {/* Header */}
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '20px 28px',
-      }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: textColor, margin: 0 }}>Majority</h1>
-          <p style={{ fontSize: 13, color: subColor, margin: 0 }}>What does the world think?</p>
+    <div className="cosmos-stage">
+      {/* Header (kept identical to original) */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '20px 28px',
+          pointerEvents: 'none',
+        }}
+      >
+        <div style={{ pointerEvents: 'auto' }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: textColor, margin: 0 }}>
+            Majority
+          </h1>
+          <p style={{ fontSize: 13, color: subColor, margin: 0 }}>
+            What does the world think?
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <a href="/dashboard/request" style={{
-            color: subColor, fontSize: 13, fontWeight: 500,
-            textDecoration: 'none', padding: '10px 16px',
-          }}>
+        <div
+          style={{ display: 'flex', gap: 10, alignItems: 'center', pointerEvents: 'auto' }}
+        >
+          <a
+            href="/dashboard/request"
+            style={{
+              color: subColor,
+              fontSize: 13,
+              fontWeight: 500,
+              textDecoration: 'none',
+              padding: '10px 16px',
+            }}
+          >
             My polls
           </a>
-          <a href="/create" style={{
-            background: day ? '#111' : '#f0f0f0',
-            color: day ? '#fff' : '#111',
-            padding: '10px 20px', borderRadius: 100,
-            fontSize: 13, fontWeight: 600, textDecoration: 'none',
-          }}>
+          <a
+            href="/create"
+            style={{
+              background: day ? '#111' : '#f0f0f0',
+              color: day ? '#fff' : '#111',
+              padding: '10px 20px',
+              borderRadius: 100,
+              fontSize: 13,
+              fontWeight: 600,
+              textDecoration: 'none',
+            }}
+          >
             + New Poll
           </a>
         </div>
       </div>
 
       {loading ? (
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: subColor, fontSize: 15,
-        }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: subColor,
+            fontSize: 15,
+          }}
+        >
           Loading...
         </div>
       ) : polls.length === 0 ? (
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          color: subColor, fontSize: 15, gap: 8,
-        }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: subColor,
+            fontSize: 15,
+            gap: 8,
+          }}
+        >
           <p style={{ margin: 0 }}>No polls yet.</p>
           <p style={{ margin: 0, fontSize: 13 }}>Be the first to create one!</p>
         </div>
       ) : (
-        <div style={{
-          position: 'absolute', top: 72, left: 0, right: 0, bottom: 0,
-          display: 'flex', flexWrap: 'wrap',
-          alignContent: 'center', justifyContent: 'center',
-          gap: 40, padding: '20px 40px', overflow: 'hidden',
-        }}>
-          {polls.map((poll) => (
-            <div
-              key={poll.id}
-              onClick={() => handleClick(poll)}
-              className={zoomingId === poll.id ? 'bubble-zoom' : ''}
-              style={{
-                width: poll.size, height: poll.size,
-                minWidth: poll.size, minHeight: poll.size,
-                borderRadius: '50%', background: poll.color,
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', textAlign: 'center',
-                padding: 20, flexShrink: 0,
-                animation: `float ${poll.animDuration}s ease-in-out ${poll.animDelay}s infinite`,
-                transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                zIndex: zoomingId === poll.id ? 50 : 1,
-              }}
-              onMouseEnter={e => {
-                if (!zoomingId) (e.currentTarget as HTMLElement).style.transform = 'scale(1.07)'
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.transform = 'scale(1)'
-              }}
-            >
-              <span style={{
-                fontSize: poll.size > 190 ? 15 : 13,
-                fontWeight: 600, color: '#fff', lineHeight: 1.4,
-                textShadow: '0 1px 4px rgba(0,0,0,0.25)',
-                display: 'block', maxWidth: poll.size * 0.72,
-                wordBreak: 'break-word', overflowWrap: 'break-word',
-              }}>
-                {poll.question}
-              </span>
-              {poll.voteCount > 0 && (
-                <span style={{
-                  fontSize: 11, color: 'rgba(255,255,255,0.75)',
-                  marginTop: 6, fontWeight: 500,
-                }}>
-                  {poll.voteCount} {poll.voteCount === 1 ? 'vote' : 'votes'}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
+        <CosmosScene
+          polls={polls}
+          onPollClick={(id) => router.push(`/poll/${id}`)}
+          showHint
+        />
       )}
     </div>
-  )
+  );
 }
