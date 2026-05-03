@@ -161,16 +161,16 @@ body.night {
 }
 
 @keyframes cosmosShootingStar {
-  0%   { transform: translate(0, 0) rotate(42deg); opacity: 0; width: 0px; }
+  0%   { transform: translate(0, 0) rotate(-45deg); opacity: 0; width: 0px; }
   8%   { opacity: 1; }
   45%  { opacity: 0.85; width: 80px; }
-  100% { transform: translate(360px, 360px) rotate(42deg); opacity: 0; width: 0px; }
+  100% { transform: translate(320px, 320px) rotate(-45deg); opacity: 0; width: 0px; }
 }
 
 .shooting-star {
   position: absolute;
   height: 1.5px;
-  background: linear-gradient(90deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 100%);
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.95) 100%);
   border-radius: 100px;
   animation: cosmosShootingStar linear infinite;
   pointer-events: none;
