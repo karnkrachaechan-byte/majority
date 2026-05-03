@@ -320,8 +320,8 @@ function Stars({ vw, vh }: { vw: number; vh: number }) {
     }))
     const rng2 = mulberry32(77)
     const shootingStars = Array.from({ length: 4 }, (_, i) => ({
-      x: vw * 0.4 + rng2() * vw * 0.55, // start from right half
-      y: rng2() * vh * 0.35,
+      x: rng2() * vw * 0.5, // start from left half
+      y: rng2() * vh * 0.3,
       duration: 6 + rng2() * 7,
       delay: rng2() * 16,
       key: i,
