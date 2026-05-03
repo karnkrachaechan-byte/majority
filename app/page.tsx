@@ -71,18 +71,18 @@ export default function Home() {
   }, [])
 
   const planets = useMemo(() => {
-    const cx = vw * 0.42
-    const cy = vh * 0.72
-    const maxR = Math.min(vw * 0.115, 128)
-    const minR = Math.min(vw * 0.058, 62)
+    const cx = vw * 0.44
+    const cy = vh * 0.82
+    const maxR = Math.min(vw * 0.09, 110)   // capped — never fills the screen
+    const minR = Math.min(vw * 0.05, 58)
     const golden = 2.399
 
     return polls.map((poll, i) => {
       const r = maxR - (i / Math.max(polls.length - 1, 1)) * (maxR - minR)
       const angle = i === 0 ? 0 : i * golden + Math.PI * 0.25
-      const spread = i === 0 ? 0 : 110 + i * 52
+      const spread = i === 0 ? 0 : 120 + i * 56
       const x = cx + Math.cos(angle) * spread + (det(poll.id, 20) - 0.5) * 36
-      const y = cy + Math.sin(angle) * spread * 0.48 + (det(poll.id, 21) - 0.5) * 22
+      const y = cy + Math.sin(angle) * spread * 0.45 + (det(poll.id, 21) - 0.5) * 22
       const palette = day ? DAY_COLORS : NIGHT_COLORS
       const color = palette[Math.floor(det(poll.id, 22) * palette.length)]
       const floatDur = 4 + det(poll.id, 23) * 3
@@ -176,7 +176,7 @@ export default function Home() {
               width: 7, height: 7, borderRadius: '50%', background: '#4ade80',
               boxShadow: '0 0 6px #4ade80', display: 'inline-block', flexShrink: 0,
             }} />
-            {day ? 'Daytime' : 'Nighttime'} · Live · {formatVotes(totalVotes)} votes cast
+            {day ? 'Daytime' : 'Nighttime'} · Live · {formatVotes(totalVotes)} voting now
           </div>
 
           <div style={{
@@ -240,9 +240,9 @@ export default function Home() {
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)' }}
               >
                 <span style={{
-                  color: '#fff', fontWeight: 600,
-                  fontSize: r > 100 ? 15 : r > 72 ? 13 : 11,
-                  lineHeight: 1.3, textShadow: '0 1px 4px rgba(0,0,0,0.25)',
+                  color: '#fff', fontWeight: 700,
+                  fontSize: r > 95 ? 16 : r > 70 ? 14 : 12,
+                  lineHeight: 1.3, textShadow: '0 2px 8px rgba(0,0,0,0.4)',
                   display: '-webkit-box', WebkitLineClamp: 3,
                   WebkitBoxOrient: 'vertical', overflow: 'hidden',
                   maxWidth: '80%',
@@ -250,7 +250,7 @@ export default function Home() {
                   {poll.question}
                 </span>
                 {poll.voteCount > 0 && (
-                  <span style={{ color: 'rgba(255,255,255,0.78)', fontSize: r > 80 ? 11 : 10, marginTop: 5, fontWeight: 500 }}>
+                  <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: r > 80 ? 11 : 10, marginTop: 6, fontWeight: 600, textShadow: '0 1px 4px rgba(0,0,0,0.3)' }}>
                     {formatVotes(poll.voteCount)} · {pctA}/{pctB}
                   </span>
                 )}
