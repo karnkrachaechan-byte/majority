@@ -99,14 +99,22 @@ export default function Home() {
           <h1 style={{ fontSize: 22, fontWeight: 700, color: textColor, margin: 0 }}>Majority</h1>
           <p style={{ fontSize: 13, color: subColor, margin: 0 }}>What does the world think?</p>
         </div>
-        <a href="/create" style={{
-          background: day ? '#111' : '#f0f0f0',
-          color: day ? '#fff' : '#111',
-          padding: '10px 20px', borderRadius: 100,
-          fontSize: 13, fontWeight: 600, textDecoration: 'none',
-        }}>
-          + New Poll
-        </a>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <a href="/dashboard/request" style={{
+            color: subColor, fontSize: 13, fontWeight: 500,
+            textDecoration: 'none', padding: '10px 16px',
+          }}>
+            My polls
+          </a>
+          <a href="/create" style={{
+            background: day ? '#111' : '#f0f0f0',
+            color: day ? '#fff' : '#111',
+            padding: '10px 20px', borderRadius: 100,
+            fontSize: 13, fontWeight: 600, textDecoration: 'none',
+          }}>
+            + New Poll
+          </a>
+        </div>
       </div>
 
       {loading ? (
