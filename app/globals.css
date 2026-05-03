@@ -80,6 +80,8 @@ body.night {
   text-align: center;
   padding: 24px;
   user-select: none;
+  width: 200px;
+  height: 200px;
 }
 
 .vote-bubble:hover {
@@ -89,4 +91,25 @@ body.night {
 
 .vote-bubble-zoom {
   animation: zoomFill 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+}
+
+.vote-row {
+  display: flex;
+  flex-direction: row;
+  gap: 32px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .vote-bubble {
+    width: 155px;
+    height: 155px;
+  }
+
+  .vote-row {
+    flex-direction: column;
+    gap: 24px;
+  }
 }

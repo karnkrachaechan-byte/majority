@@ -59,14 +59,16 @@ export default function Home() {
       })
 
       const colors = getBubbleColors()
-      const bubbles: BubbleData[] = pollData.map((poll) => ({
-        ...poll,
-        voteCount: voteCounts[poll.id] || 0,
-        size: 150 + Math.random() * 80,
-        color: getRandomColor(colors),
-        animDuration: 5 + Math.random() * 5,
-        animDelay: -(Math.random() * 8),
-      }))
+      const bubbles: BubbleData[] = pollData
+        .map((poll) => ({
+          ...poll,
+          voteCount: voteCounts[poll.id] || 0,
+          size: 150 + Math.random() * 80,
+          color: getRandomColor(colors),
+          animDuration: 5 + Math.random() * 5,
+          animDelay: -(Math.random() * 8),
+        }))
+        .sort((a, b) => b.voteCount - a.voteCount)
 
       setPolls(bubbles)
       setLoading(false)

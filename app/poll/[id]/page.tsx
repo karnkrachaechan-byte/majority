@@ -275,23 +275,18 @@ export default function PollPage() {
             One vote per person · changeable within 10 min
           </p>
           {error && <p style={{ color: '#ef4444', fontSize: 14 }}>{error}</p>}
-          <div style={{
-            display: 'flex',
-            flexDirection: window.innerWidth < 640 ? 'column' : 'row',
-            gap: 32, alignItems: 'center', justifyContent: 'center', width: '100%',
-          }}>
+          <div className="vote-row">
             {([1, 2] as const).map((choice) => {
               const isChoice1 = choice === 1
               const color = isChoice1 ? color1 : color2
               const label = isChoice1 ? poll.option_1 : poll.option_2
-              const size = window.innerWidth < 640 ? 160 : 200
               return (
                 <div
                   key={choice}
                   className={`vote-bubble fade-in ${zoomingChoice === choice ? 'vote-bubble-zoom' : ''}`}
                   onClick={() => handleVote(choice)}
                   style={{
-                    width: size, height: size, background: color,
+                    background: color,
                     animation: zoomingChoice === choice ? undefined
                       : `float ${isChoice1 ? 5 : 6.5}s ease-in-out ${isChoice1 ? '0s' : '-2s'} infinite`,
                   }}
@@ -299,7 +294,7 @@ export default function PollPage() {
                   <span style={{
                     color: '#fff', fontWeight: 700, fontSize: 16,
                     textShadow: '0 1px 4px rgba(0,0,0,0.2)',
-                    maxWidth: size * 0.75, display: 'block', lineHeight: 1.4, textAlign: 'center',
+                    maxWidth: '75%', display: 'block', lineHeight: 1.4, textAlign: 'center',
                   }}>
                     {label}
                   </span>
@@ -386,11 +381,7 @@ export default function PollPage() {
           {error && <p style={{ color: '#ef4444', fontSize: 14 }}>{error}</p>}
 
           {/* Bubbles */}
-          <div style={{
-            display: 'flex',
-            flexDirection: window.innerWidth < 640 ? 'column' : 'row',
-            gap: 24, alignItems: 'center', justifyContent: 'center',
-          }}>
+          <div className="vote-row" style={{ gap: 24 }}>
             {([1, 2] as const).map((choice) => {
               const isChoice1 = choice === 1
               const color = isChoice1 ? color1 : color2
@@ -398,7 +389,7 @@ export default function PollPage() {
               const pct = isChoice1 ? pct1 : pct2
               const votes = isChoice1 ? voteCounts[1] : voteCounts[2]
               const isSelected = selectedChoice === choice
-              const baseSize = window.innerWidth < 640 ? 140 : 180
+              const baseSize = 180
               const size = baseSize * (0.6 + (pct / 100) * 0.8)
               return (
                 <div
