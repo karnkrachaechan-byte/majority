@@ -22,6 +22,9 @@
       "Bash(gh repo *)",
       "Bash(git remote *)",
       "Bash(git push *)",
+<<<<<<< Updated upstream
+      "Bash(git commit *)"
+=======
       "Bash(git commit *)",
       "Bash(git --version)",
       "Bash(gh --version)",
@@ -30,7 +33,10 @@
       "Read(//tmp/**)",
       "Bash(git checkout *)",
       "Bash(git pull *)",
-      "Bash(gh pr *)"
+      "Bash(gh pr *)",
+      "Bash(git merge *)",
+      "Bash(git stash *)"
+>>>>>>> Stashed changes
     ]
   }
 }
