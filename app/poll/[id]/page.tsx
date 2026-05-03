@@ -11,6 +11,7 @@ interface Poll {
   question: string
   option_1: string
   option_2: string
+  expires_at: string | null
 }
 
 interface DemoBreakdown {
@@ -242,6 +243,16 @@ export default function PollPage() {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 12 }}>
       <p style={{ color: subColor }}>Poll not found.</p>
       <a href="/" style={{ color: subColor, fontSize: 14 }}>← Back</a>
+    </div>
+  )
+
+  const isExpired = poll.expires_at ? new Date() > new Date(poll.expires_at) : false
+
+  if (isExpired && stage === 'voting') return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 12 }}>
+      <p style={{ fontSize: 20, fontWeight: 700, color: textColor }}>This poll has closed</p>
+      <p style={{ color: subColor, fontSize: 14 }}>{poll.question}</p>
+      <a href="/" style={{ color: subColor, fontSize: 14, marginTop: 8 }}>← See other polls</a>
     </div>
   )
 
