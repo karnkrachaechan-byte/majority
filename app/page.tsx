@@ -145,8 +145,17 @@ export default function Home() {
         padding: '20px 28px', pointerEvents: 'none',
       }}>
         <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 20, color: textColor, opacity: 0.8, lineHeight: 1 }}>⊙</span>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: textColor, margin: 0, fontFamily: serif }}>Majority</h1>
+          <svg width="32" height="22" viewBox="0 0 32 22" fill="none" style={{ opacity: 0.9 }}>
+            {/* Ring behind */}
+            <ellipse cx="16" cy="11" rx="14" ry="5" stroke={textColor} strokeWidth="1.5" fill="none" opacity="0.5"
+              style={{ clipPath: 'inset(50% 0 0 0)' }} />
+            {/* Planet body */}
+            <circle cx="16" cy="11" r="8" fill={textColor} opacity="0.92" />
+            {/* Ring in front */}
+            <ellipse cx="16" cy="11" rx="14" ry="5" stroke={textColor} strokeWidth="1.5" fill="none" opacity="0.85"
+              style={{ clipPath: 'inset(0 0 50% 0)' }} />
+          </svg>
+          <h1 style={{ fontSize: 26, fontWeight: 700, color: textColor, margin: 0, fontFamily: serif }}>Majority</h1>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', pointerEvents: 'auto' }}>
           <a href="/dashboard/request" style={{
