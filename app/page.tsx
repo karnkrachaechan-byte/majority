@@ -53,6 +53,7 @@ export default function Home() {
         .from('polls')
         .select('id, question, option_1, option_2, expires_at')
         .eq('is_active', true)
+        .eq('is_archived', false)
         .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
         .order('created_at', { ascending: false })
 

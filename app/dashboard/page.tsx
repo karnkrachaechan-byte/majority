@@ -32,7 +32,9 @@ function DashboardContent() {
   const [polls, setPolls] = useState<Poll[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [deleting, setDeleting] = useState<string | null>(null)
+  const [archiving, setArchiving] = useState<string | null>(null)
+  const [confirmPoll, setConfirmPoll] = useState<Poll | null>(null)
+  const [requestSent, setRequestSent] = useState<string | null>(null)
 
   const serif = '"Cormorant Garamond", Georgia, "Times New Roman", serif'
   const textColor   = day ? '#2a1a5e' : '#f5f0e8'
@@ -66,15 +68,32 @@ function DashboardContent() {
     load()
   }, [emailParam, tokenParam])
 
-  async function handleDelete(pollId: string) {
-    if (!confirm('Delete this poll and all its votes?')) return
-    setDeleting(pollId)
+  async function handleArchive(poll: Poll) {
+    if (poll.voteCount >= 1000) {
+      // Request archive via email
+      setArchiving(poll.id)
+      await fetch('/api/request-archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ poll_id: poll.id, fingerprint }),
+      })
+      setRequestSent(poll.id)
+      setArchiving(null)
+    } else {
+      setConfirmPoll(poll)
+    }
+  }
+
+  async function confirmArchive() {
+    if (!confirmPoll) return
+    setArchiving(confirmPoll.id)
+    setConfirmPoll(null)
     const params = fingerprint
-      ? `fingerprint=${fingerprint}&poll_id=${pollId}`
-      : `email=${encodeURIComponent(emailParam)}&token=${tokenParam}&poll_id=${pollId}`
+      ? `fingerprint=${fingerprint}&poll_id=${confirmPoll.id}`
+      : `email=${encodeURIComponent(emailParam)}&token=${tokenParam}&poll_id=${confirmPoll.id}`
     await fetch(`/api/my-polls?${params}`, { method: 'DELETE' })
-    setPolls(p => p.filter(x => x.id !== pollId))
-    setDeleting(null)
+    setPolls(p => p.filter(x => x.id !== confirmPoll.id))
+    setArchiving(null)
   }
 
   return (
@@ -153,16 +172,26 @@ function DashboardContent() {
                               fontSize: 13, color: textColor, cursor: 'pointer', fontFamily: 'inherit',
                             }}>View</button>
                           )}
-                          <button
-                            onClick={() => handleDelete(poll.id)}
-                            disabled={deleting === poll.id}
-                            style={{
-                              background: 'none', border: '1px solid rgba(239,68,68,0.3)',
-                              borderRadius: 100, padding: '6px 16px',
-                              fontSize: 13, color: '#ef4444', cursor: 'pointer',
-                              opacity: deleting === poll.id ? 0.5 : 1, fontFamily: 'inherit',
-                            }}
-                          >Delete</button>
+                          {requestSent === poll.id ? (
+                            <span style={{ fontSize: 12, color: subColor }}>Request sent ✓</span>
+                          ) : (
+                            <button
+                              onClick={() => handleArchive(poll)}
+                              disabled={archiving === poll.id}
+                              style={{
+                                background: 'none',
+                                border: `1px solid ${poll.voteCount >= 1000 ? 'rgba(99,102,241,0.4)' : 'rgba(239,68,68,0.3)'}`,
+                                borderRadius: 100, padding: '6px 16px',
+                                fontSize: 13,
+                                color: poll.voteCount >= 1000 ? '#6366f1' : '#ef4444',
+                                cursor: 'pointer',
+                                opacity: archiving === poll.id ? 0.5 : 1,
+                                fontFamily: 'inherit',
+                              }}
+                            >
+                              {poll.voteCount >= 1000 ? 'Request Archive' : 'Archive'}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -185,6 +214,60 @@ function DashboardContent() {
           </div>
         </div>
       </div>
+
+      {/* Archive confirmation popup */}
+      {confirmPoll && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          background: day ? 'rgba(214,210,235,0.5)' : 'rgba(10,14,31,0.6)',
+          backdropFilter: 'blur(10px)',
+        }}>
+          <div style={{
+            background: day ? 'rgba(255,255,255,0.88)' : 'rgba(15,12,35,0.88)',
+            border: `1px solid ${borderColor}`, borderRadius: 28,
+            padding: '36px 32px', maxWidth: 380, width: '100%',
+            textAlign: 'center', backdropFilter: 'blur(20px)',
+          }}>
+            <p style={{
+              fontSize: 22, fontWeight: 700, color: textColor, marginBottom: 10,
+              fontFamily: serif,
+            }}>
+              Ready to close this one?
+            </p>
+            <p style={{ fontSize: 14, color: subColor, lineHeight: 1.7, marginBottom: 8 }}>
+              This poll will go offline and vanish from your view — but every vote cast here is still counted and kept safe.
+            </p>
+            <p style={{ fontSize: 13, color: subColor, marginBottom: 28, fontStyle: 'italic' }}>
+              &ldquo;{confirmPoll.question}&rdquo;
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={confirmArchive}
+                style={{
+                  width: '100%', border: 'none', borderRadius: 100,
+                  padding: '14px', fontSize: 15, fontWeight: 600, cursor: 'pointer',
+                  background: day ? '#2a1a5e' : '#f5f0e8',
+                  color: day ? '#fff' : '#1a0e3a', fontFamily: 'inherit',
+                }}
+              >
+                Yes, archive it
+              </button>
+              <button
+                onClick={() => setConfirmPoll(null)}
+                style={{
+                  width: '100%', border: 'none', borderRadius: 100,
+                  padding: '14px', fontSize: 15, fontWeight: 500,
+                  cursor: 'pointer', background: 'transparent',
+                  color: subColor, fontFamily: 'inherit',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

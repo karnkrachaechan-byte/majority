@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
       .from('polls')
       .select('id, question, option_1, option_2, is_active, created_at, expires_at, creator_fingerprint')
       .eq('creator_fingerprint', fingerprint)
+      .eq('is_archived', false)
       .order('created_at', { ascending: false })
     polls = data
   }
@@ -42,6 +43,7 @@ export async function GET(req: NextRequest) {
       .from('polls')
       .select('id, question, option_1, option_2, is_active, created_at, expires_at')
       .eq('creator_email', email)
+      .eq('is_archived', false)
       .order('created_at', { ascending: false })
     polls = data
   } else {
@@ -63,16 +65,16 @@ export async function DELETE(req: NextRequest) {
 
   if (!pollId) return NextResponse.json({ error: 'Missing poll_id' }, { status: 400 })
 
-  // Primary: fingerprint delete
+  // Primary: fingerprint archive
   if (fingerprint) {
     await supabaseAdmin
-      .from('polls').delete()
+      .from('polls').update({ is_archived: true })
       .eq('id', pollId)
       .eq('creator_fingerprint', fingerprint)
     return NextResponse.json({ success: true })
   }
 
-  // Fallback: email + token delete
+  // Fallback: email + token archive
   if (email && token) {
     const { data: tokenRow } = await supabaseAdmin
       .from('dashboard_tokens')
@@ -83,7 +85,7 @@ export async function DELETE(req: NextRequest) {
     if (!tokenRow || new Date() > new Date(tokenRow.expires_at)) {
       return NextResponse.json({ error: 'Link expired' }, { status: 401 })
     }
-    await supabaseAdmin.from('polls').delete().eq('id', pollId).eq('creator_email', email)
+    await supabaseAdmin.from('polls').update({ is_archived: true }).eq('id', pollId).eq('creator_email', email)
     return NextResponse.json({ success: true })
   }
 
