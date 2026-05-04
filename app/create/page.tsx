@@ -8,6 +8,7 @@ import { useViewport } from '@/components/cosmos/useOrbit'
 import { DaySky } from '@/components/cosmos/DaySky'
 import { NightSky } from '@/components/cosmos/NightSky'
 import { CHANNELS, getChannel } from '@/lib/channels'
+import { t } from '@/lib/i18n'
 
 export default function CreatePoll() {
   const router = useRouter()
@@ -29,10 +30,25 @@ export default function CreatePoll() {
   const [age, setAge] = useState('')
   const [gender, setGender] = useState('')
   const [email, setEmail] = useState('')
-  const [channel, setChannel] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('majority_channel') || 'global'
-    return 'global'
-  })
+  const [uiLang, setUiLang] = useState('global')
+  const [channel, setChannel] = useState('global')
+
+  useEffect(() => {
+    const saved = localStorage.getItem('majority_channel')
+    if (saved) {
+      setUiLang(saved)
+      setChannel(saved)
+    } else {
+      fetch('/api/detect-channel')
+        .then(r => r.json())
+        .then(d => {
+          const detected = d.channel || 'global'
+          localStorage.setItem('majority_channel', detected)
+          setUiLang(detected)
+          setChannel(detected)
+        })
+    }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -163,18 +179,23 @@ export default function CreatePoll() {
               color: textColor, marginBottom: 6, fontFamily: serif,
               lineHeight: 1.1,
             }}>
-              Ask the world
+              {t(uiLang, 'create.title')}
             </h1>
             <p style={{ fontSize: 14, color: subColor, marginBottom: 32 }}>
-              Post a binary question — see how everyone answers.
+              {t(uiLang, 'create.sub')}
             </p>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
               <div>
-                <label style={labelStyle}>Channel</label>
+                <label style={labelStyle}>{t(uiLang, 'create.channel')}</label>
                 <select
-                  value={channel} onChange={e => setChannel(e.target.value)}
+                  value={channel} onChange={e => {
+                    const id = e.target.value
+                    setChannel(id)
+                    setUiLang(id)
+                    localStorage.setItem('majority_channel', id)
+                  }}
                   style={{ ...inputStyle, background: day ? 'rgba(255,255,255,0.8)' : 'rgba(20,15,45,0.9)' }}
                 >
                   {CHANNELS.map(ch => (
@@ -189,28 +210,28 @@ export default function CreatePoll() {
               </div>
 
               <div>
-                <label style={labelStyle}>Your question</label>
+                <label style={labelStyle}>{t(uiLang, 'create.question')}</label>
                 <input
                   type="text" value={question}
                   onChange={(e) => setQuestion(e.target.value)}
-                  placeholder="Are you a dog or cat person?"
+                  placeholder={t(uiLang, 'create.question.ph')}
                   style={inputStyle} maxLength={200}
                 />
               </div>
 
               <div>
-                <label style={labelStyle}>Two choices</label>
+                <label style={labelStyle}>{t(uiLang, 'create.choices')}</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <input
                     type="text" value={option1}
                     onChange={(e) => setOption1(e.target.value)}
-                    placeholder="Option A  (e.g. Dog)"
+                    placeholder={t(uiLang, 'create.a.ph')}
                     style={inputStyle} maxLength={100}
                   />
                   <input
                     type="text" value={option2}
                     onChange={(e) => setOption2(e.target.value)}
-                    placeholder="Option B  (e.g. Cat)"
+                    placeholder={t(uiLang, 'create.b.ph')}
                     style={inputStyle} maxLength={100}
                   />
                 </div>
@@ -218,37 +239,37 @@ export default function CreatePoll() {
 
               <div style={{ display: 'flex', gap: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Your age</label>
+                  <label style={labelStyle}>{t(uiLang, 'create.age')}</label>
                   <input
                     type="number" value={age}
                     onChange={(e) => setAge(e.target.value)}
-                    placeholder="28" min={1} max={120}
+                    placeholder={t(uiLang, 'create.age.ph')} min={1} max={120}
                     style={inputStyle}
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Gender</label>
+                  <label style={labelStyle}>{t(uiLang, 'create.gender')}</label>
                   <select
                     value={gender} onChange={(e) => setGender(e.target.value)}
                     style={{ ...inputStyle, background: day ? 'rgba(255,255,255,0.8)' : 'rgba(20,15,45,0.9)' }}
                   >
-                    <option value="">Select</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="prefer_not_to_say">Prefer not to say</option>
+                    <option value="">{t(uiLang, 'demo.gender')}</option>
+                    <option value="male">{t(uiLang, 'demo.gender.male')}</option>
+                    <option value="female">{t(uiLang, 'demo.gender.female')}</option>
+                    <option value="prefer_not_to_say">{t(uiLang, 'demo.gender.other')}</option>
                   </select>
                 </div>
               </div>
 
               <div>
                 <label style={labelStyle}>
-                  Your email{' '}
-                  <span style={{ textTransform: 'none', fontWeight: 400, opacity: 0.6 }}>(for verification only)</span>
+                  {t(uiLang, 'create.email')}{' '}
+                  <span style={{ textTransform: 'none', fontWeight: 400, opacity: 0.6 }}>{t(uiLang, 'create.email.note')}</span>
                 </label>
                 <input
                   type="email" value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder={t(uiLang, 'create.email.ph')}
                   style={inputStyle}
                 />
               </div>
@@ -270,7 +291,7 @@ export default function CreatePoll() {
                   transition: 'opacity 0.2s',
                 }}
               >
-                {loading ? 'Sending…' : 'Send verification email →'}
+                {loading ? t(uiLang, 'create.submitting') : t(uiLang, 'create.submit')}
               </button>
 
             </form>

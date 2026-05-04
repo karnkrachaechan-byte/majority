@@ -7,7 +7,7 @@ import { assignPalette } from '@/lib/theme'
 import { useDayNight } from '@/components/cosmos/useDayNight'
 import { useViewport } from '@/components/cosmos/useOrbit'
 import { getChannel, CHANNELS } from '@/lib/channels'
-import { ChannelSelect } from '@/components/ChannelSelect'
+import { t } from '@/lib/i18n'
 
 interface PollData {
   id: string
@@ -24,22 +24,11 @@ function formatVotes(n: number): string {
   return String(n)
 }
 
-function textOnColor(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  return lum > 0.58 ? 'rgba(25,15,55,0.9)' : '#fff'
-}
-
 function det(id: string, salt: number): number {
   let h = 2166136261 ^ salt
   for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619) }
   return ((h >>> 0) % 10000) / 10000
 }
-
-const NIGHT_COLORS = ['#7DD4A8','#56D0E8','#F4A261','#F5A0C5','#B8A8E8','#F8D675','#A8D8EA','#FFA8A8']
-const DAY_COLORS   = ['#FF6B6B','#FF8E53','#FFC857','#A8E063','#56CCF2','#6C63FF','#F77FBE','#43E97B']
 
 export default function Home() {
   const router = useRouter()
@@ -49,11 +38,9 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [zoomingId, setZoomingId] = useState<string | null>(null)
   const [channel, setChannel] = useState<string | null>(null)
-  const [suggestedChannel, setSuggestedChannel] = useState('global')
-  const [showChannelSelect, setShowChannelSelect] = useState(false)
   const [showChannelDropdown, setShowChannelDropdown] = useState(false)
 
-  // Load channel from localStorage or detect
+  // Load channel from localStorage or detect silently from IP
   useEffect(() => {
     const saved = localStorage.getItem('majority_channel')
     if (saved) {
@@ -62,8 +49,13 @@ export default function Home() {
       fetch('/api/detect-channel')
         .then(r => r.json())
         .then(d => {
-          setSuggestedChannel(d.channel)
-          setShowChannelSelect(true)
+          const detected = d.channel || 'global'
+          localStorage.setItem('majority_channel', detected)
+          setChannel(detected)
+        })
+        .catch(() => {
+          localStorage.setItem('majority_channel', 'global')
+          setChannel('global')
         })
     }
   }, [])
@@ -71,7 +63,6 @@ export default function Home() {
   function handleChannelSelect(id: string) {
     localStorage.setItem('majority_channel', id)
     setChannel(id)
-    setShowChannelSelect(false)
   }
 
   useEffect(() => {
@@ -99,9 +90,9 @@ export default function Home() {
 
       const totMap: Record<string, { a: number; b: number; total: number }> = {}
       voteData?.forEach(v => {
-        const t = totMap[v.poll_id] ?? { a: 0, b: 0, total: 0 }
-        if (v.choice === 1) t.a++; else if (v.choice === 2) t.b++
-        t.total = t.a + t.b; totMap[v.poll_id] = t
+        const tot = totMap[v.poll_id] ?? { a: 0, b: 0, total: 0 }
+        if (v.choice === 1) tot.a++; else if (v.choice === 2) tot.b++
+        tot.total = tot.a + tot.b; totMap[v.poll_id] = tot
       })
 
       setPolls(pollData.map(p => ({
@@ -117,7 +108,7 @@ export default function Home() {
   const planets = useMemo(() => {
     const cx = vw * 0.44
     const cy = vh * 0.82
-    const maxR = Math.min(vw * 0.09, 110)   // capped — never fills the screen
+    const maxR = Math.min(vw * 0.09, 110)
     const minR = Math.min(vw * 0.05, 58)
     const golden = 2.399
 
@@ -132,9 +123,8 @@ export default function Home() {
       const floatDelay = -det(poll.id, 24) * 5
       return { poll, r, x, y, colorA, colorB, floatDur, floatDelay }
     })
-  }, [polls, vw, vh, day])
+  }, [polls, vw, vh])
 
-  // ASK planet: place it offset from last real planet
   const askPos = useMemo(() => {
     if (planets.length === 0) return { x: vw * 0.72, y: vh * 0.68 }
     const last = planets[planets.length - 1]
@@ -142,6 +132,7 @@ export default function Home() {
   }, [planets, vw, vh])
 
   const totalVotes = polls.reduce((s, p) => s + p.voteCount, 0)
+  const ch = channel || 'global'
 
   function handleClick(id: string) {
     if (zoomingId) return
@@ -155,6 +146,17 @@ export default function Home() {
   const bgGradient = day
     ? 'linear-gradient(160deg, #d6e9f5 0%, #f3e5d0 60%, #ffd9b8 100%)'
     : 'linear-gradient(160deg, #1a0e3a 0%, #2d1b5e 45%, #1e1040 100%)'
+
+  // Render headline with optional styled italic word
+  function renderHeadline() {
+    const template = t(ch, 'home.headline')
+    const theWord = t(ch, 'home.headline.the')
+    if (theWord && template.includes('{the}')) {
+      const parts = template.split('{the}')
+      return <>{parts[0]}<em style={{ fontStyle: 'italic' }}>{theWord}</em>{parts[1]}</>
+    }
+    return template
+  }
 
   return (
     <div style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative', background: bgGradient }}>
@@ -181,12 +183,9 @@ export default function Home() {
       }}>
         <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           <svg width="32" height="22" viewBox="0 0 32 22" fill="none" style={{ opacity: 0.9 }}>
-            {/* Ring behind */}
             <ellipse cx="16" cy="11" rx="14" ry="5" stroke={textColor} strokeWidth="1.5" fill="none" opacity="0.5"
               style={{ clipPath: 'inset(50% 0 0 0)' }} />
-            {/* Planet body */}
             <circle cx="16" cy="11" r="8" fill={textColor} opacity="0.92" />
-            {/* Ring in front */}
             <ellipse cx="16" cy="11" rx="14" ry="5" stroke={textColor} strokeWidth="1.5" fill="none" opacity="0.85"
               style={{ clipPath: 'inset(0 0 50% 0)' }} />
           </svg>
@@ -246,7 +245,7 @@ export default function Home() {
             padding: '9px 18px', borderRadius: 100,
             border: `1px solid ${day ? 'rgba(42,26,94,0.2)' : 'rgba(245,240,232,0.2)'}`,
           }}>
-            My polls
+            {t(ch, 'nav.mypolls')}
           </a>
           <a href="/create" style={{
             background: day ? 'rgba(42,26,94,0.85)' : 'rgba(245,240,232,0.12)',
@@ -255,7 +254,7 @@ export default function Home() {
             padding: '9px 22px', borderRadius: 100,
             fontSize: 13, fontWeight: 600, textDecoration: 'none',
           }}>
-            + Ask the world
+            {t(ch, 'nav.ask')}
           </a>
         </div>
       </div>
@@ -276,7 +275,7 @@ export default function Home() {
               width: 7, height: 7, borderRadius: '50%', background: '#4ade80',
               boxShadow: '0 0 6px #4ade80', display: 'inline-block', flexShrink: 0,
             }} />
-            {day ? 'Daytime' : 'Nighttime'} · Live · {formatVotes(totalVotes)} voting now
+            {t(ch, day ? 'home.status.day' : 'home.status.night')} · {t(ch, 'home.status.live')} · {formatVotes(totalVotes)} {t(ch, 'home.status.voting')}
           </div>
 
           <div style={{
@@ -286,14 +285,14 @@ export default function Home() {
             textAlign: 'center', lineHeight: 1.08,
             maxWidth: 700,
           }}>
-            What does <em style={{ fontStyle: 'italic' }}>the world</em> think?
+            {renderHeadline()}
           </div>
 
           <p style={{
             fontSize: 'clamp(13px, 1.6vw, 15px)', color: subColor,
             textAlign: 'center', maxWidth: 400, lineHeight: 1.65, margin: 0,
           }}>
-            Real answers, every age and gender. Cast your vote to see how the world answered.
+            {t(ch, 'home.subtext')}
           </p>
         </div>
       )}
@@ -379,8 +378,12 @@ export default function Home() {
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           >
             <span style={{ color: day ? 'rgba(42,26,94,0.7)' : 'rgba(245,240,232,0.8)', fontSize: 26, fontWeight: 300, lineHeight: 1 }}>+</span>
-            <span style={{ color: day ? 'rgba(42,26,94,0.6)' : 'rgba(245,240,232,0.7)', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 4 }}>ASK</span>
-            <span style={{ color: day ? 'rgba(42,26,94,0.5)' : 'rgba(245,240,232,0.6)', fontSize: 9, fontWeight: 400, marginTop: 1 }}>your own</span>
+            <span style={{ color: day ? 'rgba(42,26,94,0.6)' : 'rgba(245,240,232,0.7)', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 4 }}>
+              {t(ch, 'home.ask')}
+            </span>
+            <span style={{ color: day ? 'rgba(42,26,94,0.5)' : 'rgba(245,240,232,0.6)', fontSize: 9, fontWeight: 400, marginTop: 1 }}>
+              {t(ch, 'home.ask.sub')}
+            </span>
           </button>
         </div>
       )}
@@ -396,19 +399,14 @@ export default function Home() {
             fontSize: 11, fontWeight: 600, letterSpacing: '0.1em',
             color: subColor, textTransform: 'uppercase', margin: 0,
           }}>
-            {polls.length} {polls.length === 1 ? 'poll' : 'polls'} in orbit · {formatVotes(totalVotes)} voices · No login required
+            {t(ch, 'home.stats')
+              .replace('{n}', String(polls.length))
+              .replace('{poll}', polls.length === 1 ? t(ch, 'home.poll') : t(ch, 'home.polls'))
+              .replace('{votes}', formatVotes(totalVotes))}
             {' · '}
             <a href="/privacy" style={{ color: subColor, textDecoration: 'none', pointerEvents: 'auto' }}>Privacy</a>
           </p>
         </div>
-      )}
-      {/* Channel select overlay — first visit */}
-      {showChannelSelect && (
-        <ChannelSelect
-          suggested={suggestedChannel}
-          day={day}
-          onSelect={handleChannelSelect}
-        />
       )}
     </div>
   )
@@ -423,7 +421,7 @@ function Stars({ vw, vh }: { vw: number; vh: number }) {
     }))
     const rng2 = mulberry32(77)
     const shootingStars = Array.from({ length: 4 }, (_, i) => ({
-      x: rng2() * vw * 0.5, // start from left half
+      x: rng2() * vw * 0.5,
       y: rng2() * vh * 0.3,
       duration: 6 + rng2() * 7,
       delay: rng2() * 16,
@@ -456,9 +454,9 @@ function Stars({ vw, vh }: { vw: number; vh: number }) {
 function mulberry32(a: number) {
   return function () {
     a |= 0; a = (a + 0x6d2b79f5) | 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    let tt = a
+    tt = Math.imul(tt ^ (tt >>> 15), tt | 1)
+    tt ^= tt + Math.imul(tt ^ (tt >>> 7), tt | 61)
+    return ((tt ^ (tt >>> 14)) >>> 0) / 4294967296
   }
 }

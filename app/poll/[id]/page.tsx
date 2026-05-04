@@ -17,6 +17,7 @@ import { useViewport, useOrbit, useMouseParallax } from '@/components/cosmos/use
 import { DaySky } from '@/components/cosmos/DaySky';
 import { NightSky } from '@/components/cosmos/NightSky';
 import { DemographicRings } from '@/components/cosmos/DemographicRings';
+import { t as tr } from '@/lib/i18n';
 
 interface Poll {
   id: string;
@@ -74,6 +75,21 @@ export default function PollPage() {
   const [demoError, setDemoError] = useState('');
   const [demoSubmitting, setDemoSubmitting] = useState(false);
 
+  const [channel, setChannel] = useState('global');
+  useEffect(() => {
+    const saved = localStorage.getItem('majority_channel');
+    if (saved) {
+      setChannel(saved);
+    } else {
+      fetch('/api/detect-channel')
+        .then(r => r.json())
+        .then(d => {
+          const detected = d.channel || 'global';
+          localStorage.setItem('majority_channel', detected);
+          setChannel(detected);
+        });
+    }
+  }, []);
   const palette = id ? assignPalette(id) : assignPalette('default');
   const { colorA, colorB } = palette;
 
@@ -296,7 +312,7 @@ export default function PollPage() {
         </p>
         {stage === 'voting' && (
           <p style={{ fontSize: 13, color: subColor, marginTop: 12 }}>
-            One vote per person · changeable within 10 min
+            {tr(channel, 'vote.hint')}
           </p>
         )}
       </div>
@@ -418,17 +434,17 @@ export default function PollPage() {
               color: textColor, marginBottom: 8,
               fontFamily: '"Cormorant Garamond", Georgia, serif', lineHeight: 1.1,
             }}>
-              One quick thing
+              {tr(channel, 'demo.title')}
             </p>
             <p style={{ fontSize: 14, color: subColor, marginBottom: 28, lineHeight: 1.6 }}>
-              Help us show how your group voted
+              {tr(channel, 'demo.sub')}
             </p>
             {demoError && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 16 }}>{demoError}</p>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
               <input
                 type="number" value={age}
                 onChange={(e) => setAge(e.target.value)}
-                placeholder="Your age" min={1} max={120}
+                placeholder={tr(channel, 'demo.age.placeholder')} min={1} max={120}
                 style={{
                   width: '100%', border: `1px solid ${borderColor}`,
                   borderRadius: 14, padding: '13px 16px', fontSize: 14,
@@ -446,10 +462,10 @@ export default function PollPage() {
                   color: textColor, outline: 'none', fontFamily: 'inherit',
                 }}
               >
-                <option value="">Select gender</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="prefer_not_to_say">Prefer not to say</option>
+                <option value="">{tr(channel, 'demo.gender')}</option>
+                <option value="male">{tr(channel, 'demo.gender.male')}</option>
+                <option value="female">{tr(channel, 'demo.gender.female')}</option>
+                <option value="prefer_not_to_say">{tr(channel, 'demo.gender.other')}</option>
               </select>
             </div>
             <button
@@ -465,12 +481,12 @@ export default function PollPage() {
                 fontFamily: 'inherit', transition: 'opacity 0.2s',
               }}
             >
-              {demoSubmitting ? 'Loading…' : 'See results →'}
+              {demoSubmitting ? tr(channel, 'demo.submitting') : tr(channel, 'demo.submit')}
             </button>
             <p style={{ fontSize: 11, color: subColor, textAlign: 'center', marginTop: 12, lineHeight: 1.6 }}>
-              By continuing you agree that your anonymous demographic data may be used for research purposes.{' '}
+              {tr(channel, 'demo.consent')}{' '}
               <a href="/privacy" target="_blank" style={{ color: textColor, fontWeight: 600, textDecoration: 'none' }}>
-                Privacy policy
+                {tr(channel, 'demo.privacy')}
               </a>
             </p>
           </div>
@@ -489,11 +505,13 @@ export default function PollPage() {
             padding: '20px 24px 32px', zIndex: 20,
           }}
         >
-          <p style={{ fontSize: 13, color: subColor }}>{voteWord(total)} total</p>
+          <p style={{ fontSize: 13, color: subColor }}>
+            {total === 1 ? tr(channel, 'vote.total').replace('{n}', String(total)) : tr(channel, 'vote.totals').replace('{n}', String(total))}
+          </p>
 
           {canChange && (
             <p style={{ fontSize: 12, color: subColor, marginTop: -8 }}>
-              Tap the other planet to change your vote
+              {tr(channel, 'vote.change')}
             </p>
           )}
 
@@ -571,11 +589,18 @@ export default function PollPage() {
               fontSize: 22, fontWeight: 700, color: textColor, marginBottom: 10,
               fontFamily: '"Cormorant Garamond", Georgia, serif',
             }}>
-              Switch your vote?
+              {tr(channel, 'swap.title')}
             </p>
             <p style={{ fontSize: 14, color: subColor, lineHeight: 1.7, marginBottom: 28 }}>
-              You can only change your vote <strong style={{ color: textColor }}>once</strong>.
-              After this, your choice is locked for good.
+              {(() => {
+                const body = tr(channel, 'swap.body')
+                const once = tr(channel, 'swap.once')
+                if (body.includes('{once}')) {
+                  const parts = body.split('{once}')
+                  return <>{parts[0]}<strong style={{ color: textColor }}>{once}</strong>{parts[1]}</>
+                }
+                return body
+              })()}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button
@@ -590,7 +615,7 @@ export default function PollPage() {
                   fontFamily: 'inherit',
                 }}
               >
-                Yes, switch my vote
+                {tr(channel, 'swap.confirm')}
               </button>
               <button
                 onClick={() => setConfirmChoice(null)}
@@ -601,7 +626,7 @@ export default function PollPage() {
                   color: subColor, fontFamily: 'inherit',
                 }}
               >
-                Cancel
+                {tr(channel, 'swap.cancel')}
               </button>
             </div>
           </div>
