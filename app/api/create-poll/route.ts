@@ -6,7 +6,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(req: NextRequest) {
   try {
-    const { question, option1, option2, age, gender, email } = await req.json()
+    const { question, option1, option2, age, gender, email, fingerprint } = await req.json()
 
     if (!question || !option1 || !option2 || !age || !gender || !email) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
         creator_age: age,
         creator_gender: gender,
         creator_email: email,
+        creator_fingerprint: fingerprint || null,
         is_active: false,
       })
       .select()

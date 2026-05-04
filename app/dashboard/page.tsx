@@ -2,7 +2,11 @@
 
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { isDay } from '@/lib/theme'
+import FingerprintJS from '@fingerprintjs/fingerprintjs'
+import { useDayNight } from '@/components/cosmos/useDayNight'
+import { useViewport } from '@/components/cosmos/useOrbit'
+import { DaySky } from '@/components/cosmos/DaySky'
+import { NightSky } from '@/components/cosmos/NightSky'
 
 interface Poll {
   id: string
@@ -18,132 +22,169 @@ interface Poll {
 function DashboardContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const email = searchParams.get('email') ?? ''
-  const token = searchParams.get('token') ?? ''
+  const day = useDayNight()
+  const { w: vw, h: vh } = useViewport()
 
+  const emailParam = searchParams.get('email') ?? ''
+  const tokenParam = searchParams.get('token') ?? ''
+
+  const [fingerprint, setFingerprint] = useState('')
   const [polls, setPolls] = useState<Poll[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [day, setDay] = useState(true)
   const [deleting, setDeleting] = useState<string | null>(null)
 
-  useEffect(() => {
-    const d = isDay()
-    setDay(d)
-    document.body.className = d ? 'day' : 'night'
-  }, [])
+  const serif = '"Cormorant Garamond", Georgia, "Times New Roman", serif'
+  const textColor   = day ? '#2a1a5e' : '#f5f0e8'
+  const subColor    = day ? '#7a6a9e' : '#b0a8cc'
+  const cardBg      = day ? 'rgba(255,255,255,0.75)' : 'rgba(15,12,35,0.72)'
+  const borderColor = day ? 'rgba(42,26,94,0.12)' : 'rgba(245,240,232,0.12)'
+  const itemBg      = day ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.05)'
 
   useEffect(() => {
-    if (!email || !token) { setError('Invalid link'); setLoading(false); return }
-    fetch(`/api/my-polls?email=${encodeURIComponent(email)}&token=${token}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.error) { setError(data.error); return }
-        setPolls(data.polls)
-      })
-      .finally(() => setLoading(false))
-  }, [email, token])
+    async function load() {
+      let url = ''
+
+      // Email magic link flow (coming from email)
+      if (emailParam && tokenParam) {
+        url = `/api/my-polls?email=${encodeURIComponent(emailParam)}&token=${tokenParam}`
+      } else {
+        // Fingerprint flow (default)
+        const fp = await FingerprintJS.load()
+        const result = await fp.get()
+        const fpId = result.visitorId
+        setFingerprint(fpId)
+        url = `/api/my-polls?fingerprint=${fpId}`
+      }
+
+      const res = await fetch(url)
+      const data = await res.json()
+      if (data.error) { setError(data.error) }
+      else { setPolls(data.polls) }
+      setLoading(false)
+    }
+    load()
+  }, [emailParam, tokenParam])
 
   async function handleDelete(pollId: string) {
     if (!confirm('Delete this poll and all its votes?')) return
     setDeleting(pollId)
-    await fetch(`/api/my-polls?email=${encodeURIComponent(email)}&token=${token}&poll_id=${pollId}`, { method: 'DELETE' })
+    const params = fingerprint
+      ? `fingerprint=${fingerprint}&poll_id=${pollId}`
+      : `email=${encodeURIComponent(emailParam)}&token=${tokenParam}&poll_id=${pollId}`
+    await fetch(`/api/my-polls?${params}`, { method: 'DELETE' })
     setPolls(p => p.filter(x => x.id !== pollId))
     setDeleting(null)
   }
 
-  const textColor = day ? '#111' : '#f0f0f0'
-  const subColor = day ? '#666' : '#aaa'
-  const cardBg = day ? '#fff' : '#1a1a1a'
-  const borderColor = day ? '#e5e5e5' : '#2a2a2a'
-
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
-      <p style={{ color: subColor }}>Loading...</p>
-    </div>
-  )
-
-  if (error) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 12 }}>
-      <p style={{ color: '#ef4444', fontSize: 16 }}>{error}</p>
-      <a href="/dashboard/request" style={{ color: subColor, fontSize: 14 }}>Request a new link</a>
-    </div>
-  )
-
   return (
-    <div style={{ minHeight: '100vh', padding: '40px 24px', maxWidth: 600, margin: '0 auto' }}>
-      <button onClick={() => router.push('/')} style={{
-        background: 'none', border: 'none', color: subColor,
-        fontSize: 14, cursor: 'pointer', marginBottom: 32, padding: 0,
-      }}>
-        ← Back
-      </button>
-      <h1 style={{ fontSize: 26, fontWeight: 700, color: textColor, marginBottom: 4 }}>My Polls</h1>
-      <p style={{ fontSize: 14, color: subColor, marginBottom: 32 }}>{email}</p>
+    <div style={{ width: '100vw', height: '100dvh', position: 'relative', overflow: 'hidden' }}>
+      {day ? <DaySky w={vw} h={vh} /> : <NightSky w={vw} h={vh} />}
 
-      {polls.length === 0 ? (
-        <p style={{ color: subColor }}>No polls yet.</p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {polls.map(poll => {
-            const expired = poll.expires_at ? new Date() > new Date(poll.expires_at) : false
-            const expiresDate = poll.expires_at ? new Date(poll.expires_at).toLocaleDateString() : '—'
-            return (
-              <div key={poll.id} style={{
-                background: cardBg, border: `1px solid ${borderColor}`,
-                borderRadius: 16, padding: '20px 24px',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: 15, fontWeight: 600, color: textColor, marginBottom: 6 }}>{poll.question}</p>
-                    <p style={{ fontSize: 13, color: subColor }}>{poll.option_1} vs {poll.option_2}</p>
-                  </div>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 100,
-                    background: expired ? '#fef2f2' : poll.is_active ? '#f0fdf4' : '#fefce8',
-                    color: expired ? '#dc2626' : poll.is_active ? '#16a34a' : '#ca8a04',
-                  }}>
-                    {expired ? 'Expired' : poll.is_active ? 'Active' : 'Pending'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
-                  <div style={{ display: 'flex', gap: 20 }}>
-                    <span style={{ fontSize: 13, color: subColor }}>
-                      {poll.voteCount} {poll.voteCount === 1 ? 'vote' : 'votes'}
-                    </span>
-                    <span style={{ fontSize: 13, color: subColor }}>
-                      Expires {expiresDate}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    {poll.is_active && (
-                      <button onClick={() => router.push(`/poll/${poll.id}`)} style={{
-                        background: 'none', border: `1px solid ${borderColor}`,
-                        borderRadius: 100, padding: '6px 16px',
-                        fontSize: 13, color: textColor, cursor: 'pointer',
-                      }}>
-                        View
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleDelete(poll.id)}
-                      disabled={deleting === poll.id}
-                      style={{
-                        background: 'none', border: '1px solid #fca5a5',
-                        borderRadius: 100, padding: '6px 16px',
-                        fontSize: 13, color: '#ef4444', cursor: 'pointer',
-                        opacity: deleting === poll.id ? 0.5 : 1,
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
+      <div style={{
+        position: 'absolute', inset: 0, overflowY: 'auto',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        padding: '40px 24px 60px',
+      }}>
+        <div style={{ width: '100%', maxWidth: 520 }}>
+
+          <button onClick={() => router.push('/')} style={{
+            background: 'none', border: 'none', color: subColor,
+            fontSize: 14, cursor: 'pointer', marginBottom: 28,
+            display: 'block', fontFamily: 'inherit', padding: 0,
+          }}>
+            ← Back
+          </button>
+
+          <div style={{
+            background: cardBg, backdropFilter: 'blur(20px)',
+            border: `1px solid ${borderColor}`, borderRadius: 28,
+            padding: '36px 32px',
+          }}>
+            <h1 style={{
+              fontSize: 'clamp(26px, 4vw, 34px)', fontWeight: 700,
+              color: textColor, marginBottom: 6, fontFamily: serif, lineHeight: 1.1,
+            }}>
+              My polls
+            </h1>
+            <p style={{ fontSize: 14, color: subColor, marginBottom: 28 }}>
+              Polls you created on this browser
+            </p>
+
+            {loading ? (
+              <p style={{ color: subColor, fontSize: 14 }}>Loading…</p>
+            ) : error ? (
+              <p style={{ color: '#ef4444', fontSize: 14 }}>{error}</p>
+            ) : polls.length === 0 ? (
+              <p style={{ color: subColor, fontSize: 14 }}>No polls found on this browser.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {polls.map(poll => {
+                  const expired = poll.expires_at ? new Date() > new Date(poll.expires_at) : false
+                  const expiresDate = poll.expires_at ? new Date(poll.expires_at).toLocaleDateString() : '—'
+                  return (
+                    <div key={poll.id} style={{
+                      background: itemBg, border: `1px solid ${borderColor}`,
+                      borderRadius: 18, padding: '18px 20px',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: 15, fontWeight: 600, color: textColor, marginBottom: 4 }}>{poll.question}</p>
+                          <p style={{ fontSize: 13, color: subColor }}>{poll.option_1} vs {poll.option_2}</p>
+                        </div>
+                        <span style={{
+                          fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 100, whiteSpace: 'nowrap',
+                          background: expired ? 'rgba(239,68,68,0.12)' : poll.is_active ? 'rgba(34,197,94,0.12)' : 'rgba(234,179,8,0.12)',
+                          color: expired ? '#ef4444' : poll.is_active ? '#16a34a' : '#ca8a04',
+                        }}>
+                          {expired ? 'Expired' : poll.is_active ? 'Active' : 'Pending'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+                        <div style={{ display: 'flex', gap: 16 }}>
+                          <span style={{ fontSize: 13, color: subColor }}>{poll.voteCount} {poll.voteCount === 1 ? 'vote' : 'votes'}</span>
+                          <span style={{ fontSize: 13, color: subColor }}>Expires {expiresDate}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                          {poll.is_active && (
+                            <button onClick={() => router.push(`/poll/${poll.id}`)} style={{
+                              background: 'none', border: `1px solid ${borderColor}`,
+                              borderRadius: 100, padding: '6px 16px',
+                              fontSize: 13, color: textColor, cursor: 'pointer', fontFamily: 'inherit',
+                            }}>View</button>
+                          )}
+                          <button
+                            onClick={() => handleDelete(poll.id)}
+                            disabled={deleting === poll.id}
+                            style={{
+                              background: 'none', border: '1px solid rgba(239,68,68,0.3)',
+                              borderRadius: 100, padding: '6px 16px',
+                              fontSize: 13, color: '#ef4444', cursor: 'pointer',
+                              opacity: deleting === poll.id ? 0.5 : 1, fontFamily: 'inherit',
+                            }}
+                          >Delete</button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            )
-          })}
+            )}
+
+            {/* Email fallback */}
+            {!emailParam && !loading && (
+              <div style={{ marginTop: 28, paddingTop: 24, borderTop: `1px solid ${borderColor}`, textAlign: 'center' }}>
+                <p style={{ fontSize: 13, color: subColor }}>
+                  Don&apos;t see your poll?{' '}
+                  <a href="/dashboard/request" style={{ color: textColor, fontWeight: 600, textDecoration: 'none' }}>
+                    Try with email →
+                  </a>
+                </p>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

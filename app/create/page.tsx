@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import FingerprintJS from '@fingerprintjs/fingerprintjs'
 import { useDayNight } from '@/components/cosmos/useDayNight'
 import { useViewport } from '@/components/cosmos/useOrbit'
 import { DaySky } from '@/components/cosmos/DaySky'
@@ -12,7 +13,12 @@ export default function CreatePoll() {
   const day = useDayNight()
   const { w: vw, h: vh } = useViewport()
 
+  const [fingerprint, setFingerprint] = useState('')
   const [step, setStep] = useState<'form' | 'verify'>('form')
+
+  useEffect(() => {
+    FingerprintJS.load().then(fp => fp.get()).then(r => setFingerprint(r.visitorId))
+  }, [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -43,7 +49,7 @@ export default function CreatePoll() {
       const res = await fetch('/api/create-poll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, option1, option2, age: parseInt(age), gender, email }),
+        body: JSON.stringify({ question, option1, option2, age: parseInt(age), gender, email, fingerprint }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Something went wrong')

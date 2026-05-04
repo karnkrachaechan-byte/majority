@@ -158,7 +158,7 @@ export default function Home() {
           <h1 style={{ fontSize: 26, fontWeight: 700, color: textColor, margin: 0, fontFamily: serif }}>Majority</h1>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', pointerEvents: 'auto' }}>
-          <a href="/dashboard/request" style={{
+          <a href="/dashboard" style={{
             color: textColor, fontSize: 13, fontWeight: 500, textDecoration: 'none',
             padding: '9px 18px', borderRadius: 100,
             border: `1px solid ${day ? 'rgba(42,26,94,0.2)' : 'rgba(245,240,232,0.2)'}`,
