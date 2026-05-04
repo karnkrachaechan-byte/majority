@@ -400,39 +400,47 @@ export default function PollPage() {
           style={{
             position: 'absolute', inset: 0, display: 'flex',
             alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 30,
-            background: day ? 'rgba(248,248,246,0.5)' : 'rgba(10,14,31,0.5)',
-            backdropFilter: 'blur(8px)',
+            background: day ? 'rgba(214,210,235,0.45)' : 'rgba(10,14,31,0.5)',
+            backdropFilter: 'blur(10px)',
           }}
         >
           <div style={{
-            background: cardBg, border: `1px solid ${borderColor}`,
-            borderRadius: 24, padding: '36px 32px', width: '100%',
-            maxWidth: 400, backdropFilter: 'blur(12px)',
+            background: day ? 'rgba(255,255,255,0.78)' : 'rgba(15,12,35,0.72)',
+            border: `1px solid ${borderColor}`,
+            borderRadius: 28, padding: '40px 36px', width: '100%',
+            maxWidth: 400, backdropFilter: 'blur(20px)',
           }}>
-            <p style={{ fontSize: 18, fontWeight: 700, color: textColor, marginBottom: 8 }}>
+            <p style={{
+              fontSize: 'clamp(24px, 4vw, 30px)', fontWeight: 700,
+              color: textColor, marginBottom: 8,
+              fontFamily: '"Cormorant Garamond", Georgia, serif', lineHeight: 1.1,
+            }}>
               One quick thing
             </p>
-            <p style={{ fontSize: 14, color: subColor, marginBottom: 28 }}>
+            <p style={{ fontSize: 14, color: subColor, marginBottom: 28, lineHeight: 1.6 }}>
               Help us show how your group voted
             </p>
-            {demoError && <p style={{ color: '#ef4444', fontSize: 14, marginBottom: 16 }}>{demoError}</p>}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 24 }}>
+            {demoError && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 16 }}>{demoError}</p>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
               <input
                 type="number" value={age}
                 onChange={(e) => setAge(e.target.value)}
                 placeholder="Your age" min={1} max={120}
                 style={{
                   width: '100%', border: `1px solid ${borderColor}`,
-                  borderRadius: 12, padding: '12px 16px', fontSize: 14,
-                  background: 'transparent', color: textColor, outline: 'none',
-                }}
+                  borderRadius: 14, padding: '13px 16px', fontSize: 14,
+                  background: day ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.06)',
+                  color: textColor, outline: 'none', fontFamily: 'inherit',
+                  MozAppearance: 'textfield',
+                } as React.CSSProperties}
               />
               <select
                 value={gender} onChange={(e) => setGender(e.target.value)}
                 style={{
                   width: '100%', border: `1px solid ${borderColor}`,
-                  borderRadius: 12, padding: '12px 16px', fontSize: 14,
-                  background: day ? '#fff' : '#1e1e1e', color: textColor, outline: 'none',
+                  borderRadius: 14, padding: '13px 16px', fontSize: 14,
+                  background: day ? 'rgba(255,255,255,0.8)' : 'rgba(20,15,45,0.9)',
+                  color: textColor, outline: 'none', fontFamily: 'inherit',
                 }}
               >
                 <option value="">Select gender</option>
@@ -444,13 +452,17 @@ export default function PollPage() {
             <button
               onClick={handleDemoSubmit} disabled={demoSubmitting}
               style={{
-                width: '100%', background: day ? '#111' : '#f0f0f0',
-                color: day ? '#fff' : '#111', border: 'none', borderRadius: 100,
-                padding: '14px', fontSize: 15, fontWeight: 600,
-                cursor: 'pointer', opacity: demoSubmitting ? 0.6 : 1,
+                width: '100%',
+                background: day ? '#2a1a5e' : '#f5f0e8',
+                color: day ? '#fff' : '#1a0e3a',
+                border: 'none', borderRadius: 100,
+                padding: '15px', fontSize: 15, fontWeight: 600,
+                cursor: demoSubmitting ? 'not-allowed' : 'pointer',
+                opacity: demoSubmitting ? 0.6 : 1,
+                fontFamily: 'inherit', transition: 'opacity 0.2s',
               }}
             >
-              {demoSubmitting ? 'Loading...' : 'See results →'}
+              {demoSubmitting ? 'Loading…' : 'See results →'}
             </button>
           </div>
         </div>
