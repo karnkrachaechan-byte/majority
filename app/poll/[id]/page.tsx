@@ -467,6 +467,12 @@ export default function PollPage() {
             >
               {demoSubmitting ? 'Loading…' : 'See results →'}
             </button>
+            <p style={{ fontSize: 11, color: subColor, textAlign: 'center', marginTop: 12, lineHeight: 1.6 }}>
+              By continuing you agree that your anonymous demographic data may be used for research purposes.{' '}
+              <a href="/privacy" target="_blank" style={{ color: textColor, fontWeight: 600, textDecoration: 'none' }}>
+                Privacy policy
+              </a>
+            </p>
           </div>
         </div>
       )}

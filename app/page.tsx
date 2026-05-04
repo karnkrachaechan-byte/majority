@@ -314,6 +314,8 @@ export default function Home() {
             color: subColor, textTransform: 'uppercase', margin: 0,
           }}>
             {polls.length} {polls.length === 1 ? 'poll' : 'polls'} in orbit · {formatVotes(totalVotes)} voices · No login required
+            {' · '}
+            <a href="/privacy" style={{ color: subColor, textDecoration: 'none', pointerEvents: 'auto' }}>Privacy</a>
           </p>
         </div>
       )}
