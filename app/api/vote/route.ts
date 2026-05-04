@@ -64,7 +64,7 @@ export async function PATCH(req: NextRequest) {
     // Find the existing vote
     const { data: existing } = await supabaseAdmin
       .from('votes')
-      .select('id, can_change_until')
+      .select('id, can_change_until, has_changed')
       .eq('poll_id', poll_id)
       .or(`fingerprint.eq.${fingerprint},ip_address.eq.${ip}`)
       .single()
@@ -73,14 +73,17 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'No vote found' }, { status: 400 })
     }
 
-    // Check if within change window
+    if (existing.has_changed) {
+      return NextResponse.json({ error: 'You have already changed your vote once.' }, { status: 400 })
+    }
+
     if (new Date() > new Date(existing.can_change_until)) {
       return NextResponse.json({ error: 'Vote is locked — 10 minute window has passed' }, { status: 400 })
     }
 
     const { error } = await supabaseAdmin
       .from('votes')
-      .update({ choice })
+      .update({ choice, has_changed: true })
       .eq('id', existing.id)
 
     if (error) throw error

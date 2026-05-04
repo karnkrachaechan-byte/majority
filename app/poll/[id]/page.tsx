@@ -61,6 +61,8 @@ export default function PollPage() {
   const [ageBreakdown, setAgeBreakdown] = useState<AgeBreakdown | null>(null);
   const [fingerprint, setFingerprint] = useState('');
   const [canChange, setCanChange] = useState(false);
+  const [hasChanged, setHasChanged] = useState(false);
+  const [confirmChoice, setConfirmChoice] = useState<1 | 2 | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [zoomingChoice, setZoomingChoice] = useState<1 | 2 | null>(null);
@@ -124,7 +126,8 @@ export default function PollPage() {
 
       if (voteData.vote) {
         setSelectedChoice(voteData.vote.choice);
-        setCanChange(new Date() < new Date(voteData.vote.can_change_until));
+        setHasChanged(voteData.vote.has_changed ?? false);
+        setCanChange(!voteData.vote.has_changed && new Date() < new Date(voteData.vote.can_change_until));
         await fetchVoteData();
         setStage(voteData.vote.voter_age == null ? 'demographic' : 'results');
       }
@@ -144,17 +147,26 @@ export default function PollPage() {
   }
 
   async function handleChangeVote(choice: 1 | 2) {
-    if (!canChange || submitting) return;
+    if (!canChange || submitting || hasChanged) return;
+    // Show confirmation popup instead of immediately changing
+    setConfirmChoice(choice);
+  }
+
+  async function confirmChangeVote() {
+    if (!confirmChoice) return;
     setSubmitting(true);
+    setConfirmChoice(null);
     try {
       const res = await fetch('/api/vote', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ poll_id: id, choice, fingerprint }),
+        body: JSON.stringify({ poll_id: id, choice: confirmChoice, fingerprint }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setSelectedChoice(choice);
+      setSelectedChoice(confirmChoice);
+      setHasChanged(true);
+      setCanChange(false);
       await fetchVoteData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to change vote');
@@ -529,6 +541,63 @@ export default function PollPage() {
             >
               Report
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Swap confirmation popup */}
+      {confirmChoice && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24,
+          background: day ? 'rgba(214,210,235,0.5)' : 'rgba(10,14,31,0.6)',
+          backdropFilter: 'blur(10px)',
+        }}>
+          <div className="cosmos-fade-up" style={{
+            background: day ? 'rgba(255,255,255,0.85)' : 'rgba(15,12,35,0.85)',
+            border: `1px solid ${borderColor}`,
+            borderRadius: 28, padding: '36px 32px',
+            maxWidth: 380, width: '100%', textAlign: 'center',
+            backdropFilter: 'blur(20px)',
+          }}>
+            <p style={{
+              fontSize: 22, fontWeight: 700, color: textColor, marginBottom: 10,
+              fontFamily: '"Cormorant Garamond", Georgia, serif',
+            }}>
+              Switch your vote?
+            </p>
+            <p style={{ fontSize: 14, color: subColor, lineHeight: 1.7, marginBottom: 28 }}>
+              You can only change your vote <strong style={{ color: textColor }}>once</strong>.
+              After this, your choice is locked for good.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={confirmChangeVote}
+                disabled={submitting}
+                style={{
+                  width: '100%', border: 'none', borderRadius: 100,
+                  padding: '14px', fontSize: 15, fontWeight: 600,
+                  cursor: 'pointer',
+                  background: day ? '#2a1a5e' : '#f5f0e8',
+                  color: day ? '#fff' : '#1a0e3a',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Yes, switch my vote
+              </button>
+              <button
+                onClick={() => setConfirmChoice(null)}
+                style={{
+                  width: '100%', border: 'none', borderRadius: 100,
+                  padding: '14px', fontSize: 15, fontWeight: 500,
+                  cursor: 'pointer', background: 'transparent',
+                  color: subColor, fontFamily: 'inherit',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
