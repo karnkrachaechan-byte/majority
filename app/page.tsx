@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { assignPalette } from '@/lib/theme'
 import { useDayNight } from '@/components/cosmos/useDayNight'
 import { useViewport } from '@/components/cosmos/useOrbit'
+import { getChannel, CHANNELS } from '@/lib/channels'
+import { ChannelSelect } from '@/components/ChannelSelect'
 
 interface PollData {
   id: string
@@ -46,16 +48,48 @@ export default function Home() {
   const [polls, setPolls] = useState<PollData[]>([])
   const [loading, setLoading] = useState(true)
   const [zoomingId, setZoomingId] = useState<string | null>(null)
+  const [channel, setChannel] = useState<string | null>(null)
+  const [suggestedChannel, setSuggestedChannel] = useState('global')
+  const [showChannelSelect, setShowChannelSelect] = useState(false)
+  const [showChannelDropdown, setShowChannelDropdown] = useState(false)
+
+  // Load channel from localStorage or detect
+  useEffect(() => {
+    const saved = localStorage.getItem('majority_channel')
+    if (saved) {
+      setChannel(saved)
+    } else {
+      fetch('/api/detect-channel')
+        .then(r => r.json())
+        .then(d => {
+          setSuggestedChannel(d.channel)
+          setShowChannelSelect(true)
+        })
+    }
+  }, [])
+
+  function handleChannelSelect(id: string) {
+    localStorage.setItem('majority_channel', id)
+    setChannel(id)
+    setShowChannelSelect(false)
+  }
 
   useEffect(() => {
+    if (!channel) return
     async function fetchPolls() {
-      const { data: pollData } = await supabase
+      let query = supabase
         .from('polls')
         .select('id, question, option_1, option_2, expires_at')
         .eq('is_active', true)
         .eq('is_archived', false)
         .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
         .order('created_at', { ascending: false })
+
+      if (channel !== 'global') {
+        query = query.eq('channel', channel)
+      }
+
+      const { data: pollData } = await query
 
       if (!pollData || pollData.length === 0) { setPolls([]); setLoading(false); return }
 
@@ -78,7 +112,7 @@ export default function Home() {
       setLoading(false)
     }
     fetchPolls()
-  }, [])
+  }, [channel])
 
   const planets = useMemo(() => {
     const cx = vw * 0.44
@@ -159,6 +193,54 @@ export default function Home() {
           <h1 style={{ fontSize: 26, fontWeight: 700, color: textColor, margin: 0, fontFamily: serif }}>Majority</h1>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', pointerEvents: 'auto' }}>
+          {/* Channel switcher */}
+          {channel && (
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowChannelDropdown(v => !v)}
+                style={{
+                  background: 'none', cursor: 'pointer',
+                  color: textColor, fontSize: 13, fontWeight: 500,
+                  padding: '9px 14px', borderRadius: 100,
+                  border: `1px solid ${day ? 'rgba(42,26,94,0.2)' : 'rgba(245,240,232,0.2)'}`,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  fontFamily: 'inherit',
+                }}
+              >
+                <span style={{ fontSize: 16 }}>{getChannel(channel).flag}</span>
+                <span>{getChannel(channel).name}</span>
+              </button>
+              {showChannelDropdown && (
+                <div style={{
+                  position: 'absolute', top: '110%', right: 0,
+                  background: day ? 'rgba(255,255,255,0.95)' : 'rgba(15,12,35,0.95)',
+                  border: `1px solid ${day ? 'rgba(42,26,94,0.12)' : 'rgba(245,240,232,0.12)'}`,
+                  borderRadius: 16, padding: '8px', zIndex: 200,
+                  backdropFilter: 'blur(20px)',
+                  minWidth: 200, maxHeight: 360, overflowY: 'auto',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+                }}>
+                  {CHANNELS.map(ch => (
+                    <button key={ch.id} onClick={() => { handleChannelSelect(ch.id); setShowChannelDropdown(false) }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        width: '100%', padding: '10px 12px', borderRadius: 10,
+                        border: 'none', background: channel === ch.id
+                          ? (day ? 'rgba(42,26,94,0.08)' : 'rgba(245,240,232,0.08)')
+                          : 'transparent',
+                        cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                      }}>
+                      <span style={{ fontSize: 18 }}>{ch.flag}</span>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: textColor }}>{ch.name}</div>
+                        <div style={{ fontSize: 11, color: day ? '#7a6a9e' : '#b0a8cc' }}>{ch.language}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <a href="/dashboard" style={{
             color: textColor, fontSize: 13, fontWeight: 500, textDecoration: 'none',
             padding: '9px 18px', borderRadius: 100,
@@ -319,6 +401,14 @@ export default function Home() {
             <a href="/privacy" style={{ color: subColor, textDecoration: 'none', pointerEvents: 'auto' }}>Privacy</a>
           </p>
         </div>
+      )}
+      {/* Channel select overlay — first visit */}
+      {showChannelSelect && (
+        <ChannelSelect
+          suggested={suggestedChannel}
+          day={day}
+          onSelect={handleChannelSelect}
+        />
       )}
     </div>
   )

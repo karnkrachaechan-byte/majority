@@ -7,6 +7,7 @@ import { useDayNight } from '@/components/cosmos/useDayNight'
 import { useViewport } from '@/components/cosmos/useOrbit'
 import { DaySky } from '@/components/cosmos/DaySky'
 import { NightSky } from '@/components/cosmos/NightSky'
+import { CHANNELS, getChannel } from '@/lib/channels'
 
 export default function CreatePoll() {
   const router = useRouter()
@@ -28,6 +29,10 @@ export default function CreatePoll() {
   const [age, setAge] = useState('')
   const [gender, setGender] = useState('')
   const [email, setEmail] = useState('')
+  const [channel, setChannel] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('majority_channel') || 'global'
+    return 'global'
+  })
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -49,7 +54,7 @@ export default function CreatePoll() {
       const res = await fetch('/api/create-poll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, option1, option2, age: parseInt(age), gender, email, fingerprint }),
+        body: JSON.stringify({ question, option1, option2, age: parseInt(age), gender, email, fingerprint, channel }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Something went wrong')
@@ -165,6 +170,23 @@ export default function CreatePoll() {
             </p>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+              <div>
+                <label style={labelStyle}>Channel</label>
+                <select
+                  value={channel} onChange={e => setChannel(e.target.value)}
+                  style={{ ...inputStyle, background: day ? 'rgba(255,255,255,0.8)' : 'rgba(20,15,45,0.9)' }}
+                >
+                  {CHANNELS.map(ch => (
+                    <option key={ch.id} value={ch.id}>
+                      {ch.flag} {ch.name} — {ch.language}
+                    </option>
+                  ))}
+                </select>
+                <p style={{ fontSize: 11, color: subColor, marginTop: 6 }}>
+                  {getChannel(channel).flag} Your poll will appear in the {getChannel(channel).name} channel
+                </p>
+              </div>
 
               <div>
                 <label style={labelStyle}>Your question</label>
