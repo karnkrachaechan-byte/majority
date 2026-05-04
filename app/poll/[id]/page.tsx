@@ -265,7 +265,7 @@ export default function PollPage() {
       {day ? <DaySky w={vw} h={vh} /> : <NightSky w={vw} h={vh} />}
 
       <button
-        onClick={() => router.push('/')}
+        onClick={() => stage === 'demographic' ? setStage('voting') : router.push('/')}
         style={{
           position: 'fixed', top: 24, left: 24, zIndex: 100,
           background: 'none', border: 'none', cursor: 'pointer',
