@@ -12,7 +12,7 @@ function getCountry(req: NextRequest) {
 // Cast a new vote
 export async function POST(req: NextRequest) {
   try {
-    const { poll_id, choice, fingerprint } = await req.json()
+    const { poll_id, choice, fingerprint, age, gender } = await req.json()
     const ip = getIP(req)
     const country = getCountry(req)
 
@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
       ip_address: ip,
       fingerprint,
       country,
+      ...(age ? { voter_age: age } : {}),
+      ...(gender ? { voter_gender: gender } : {}),
     })
 
     if (error) throw error

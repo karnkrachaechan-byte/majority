@@ -133,30 +133,13 @@ export default function PollPage() {
     init();
   }, [id, fetchVoteData]);
 
-  async function handleVote(choice: 1 | 2) {
-    if (submitting || zoomingChoice) return;
+  function handleVote(choice: 1 | 2) {
+    if (zoomingChoice) return;
     setZoomingChoice(choice);
-    setTimeout(async () => {
-      setSubmitting(true);
-      setError('');
-      try {
-        const res = await fetch('/api/vote', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ poll_id: id, choice, fingerprint }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to vote');
-        setSelectedChoice(choice);
-        await fetchVoteData();
-        setStage('demographic');
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to vote');
-        setStage('voting');
-      } finally {
-        setSubmitting(false);
-        setZoomingChoice(null);
-      }
+    setTimeout(() => {
+      setSelectedChoice(choice);
+      setZoomingChoice(null);
+      setStage('demographic');
     }, 600);
   }
 
@@ -187,14 +170,22 @@ export default function PollPage() {
     if (!gender) { setDemoError('Please select your gender.'); return; }
     setDemoError('');
     setDemoSubmitting(true);
-    await fetch('/api/update-demographic', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ poll_id: id, fingerprint, age: parseInt(age), gender }),
-    });
-    await fetchVoteData();
-    setDemoSubmitting(false);
-    setStage('results');
+    try {
+      const res = await fetch('/api/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ poll_id: id, choice: selectedChoice, fingerprint, age: parseInt(age), gender }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to submit');
+      await fetchVoteData();
+      setCanChange(true);
+      setStage('results');
+    } catch (err: unknown) {
+      setDemoError(err instanceof Error ? err.message : 'Failed to submit');
+    } finally {
+      setDemoSubmitting(false);
+    }
   }
 
   async function handleReport() {
