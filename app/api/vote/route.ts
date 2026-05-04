@@ -5,11 +5,16 @@ function getIP(req: NextRequest) {
   return req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('x-real-ip') || '0.0.0.0'
 }
 
+function getCountry(req: NextRequest) {
+  return req.headers.get('x-vercel-ip-country') || null
+}
+
 // Cast a new vote
 export async function POST(req: NextRequest) {
   try {
     const { poll_id, choice, fingerprint } = await req.json()
     const ip = getIP(req)
+    const country = getCountry(req)
 
     if (!poll_id || !choice || !fingerprint) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
@@ -32,6 +37,7 @@ export async function POST(req: NextRequest) {
       choice,
       ip_address: ip,
       fingerprint,
+      country,
     })
 
     if (error) throw error
