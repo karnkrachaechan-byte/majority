@@ -106,8 +106,8 @@ export default function Home() {
   }, [channel])
 
   const planets = useMemo(() => {
-    const cx = vw * 0.5
-    const cy = vh * 0.72
+    const cx = vw * 0.44
+    const cy = vh * 0.82
     const maxR = Math.min(vw * 0.09, 110)
     const minR = Math.min(vw * 0.05, 58)
     const golden = 2.399
@@ -115,9 +115,9 @@ export default function Home() {
     return polls.map((poll, i) => {
       const r = maxR - (i / Math.max(polls.length - 1, 1)) * (maxR - minR)
       const angle = i * golden + Math.PI * 0.25
-      const spread = 60 + i * 90
-      const x = cx + Math.cos(angle) * spread + (det(poll.id, 20) - 0.5) * 24
-      const y = cy + Math.sin(angle) * spread * 0.5 + (det(poll.id, 21) - 0.5) * 16
+      const spread = i === 0 ? 40 : 120 + i * 56
+      const x = cx + Math.cos(angle) * spread + (det(poll.id, 20) - 0.5) * 36
+      const y = cy + Math.sin(angle) * spread * 0.45 + (det(poll.id, 21) - 0.5) * 22
       const { colorA, colorB } = assignPalette(poll.id)
       const floatDur = 4 + det(poll.id, 23) * 3
       const floatDelay = -det(poll.id, 24) * 5
@@ -127,15 +127,15 @@ export default function Home() {
 
   // ASK planet continues the phyllotaxis spiral after all poll planets
   const askPos = useMemo(() => {
-    const cx = vw * 0.5
-    const cy = vh * 0.72
+    const cx = vw * 0.44
+    const cy = vh * 0.82
     const golden = 2.399
     const n = polls.length
     const angle = n * golden + Math.PI * 0.25
-    const spread = 60 + n * 90
+    const spread = n === 0 ? 200 : 120 + n * 56
     return {
       x: cx + Math.cos(angle) * spread,
-      y: cy + Math.sin(angle) * spread * 0.5,
+      y: cy + Math.sin(angle) * spread * 0.45,
     }
   }, [polls.length, vw, vh])
 
