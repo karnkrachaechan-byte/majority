@@ -114,8 +114,8 @@ export default function Home() {
       Math.min(minR + Math.sqrt(p.voteCount) * 4, maxR)
     )
 
-    // Hero text ends roughly here
-    const heroBottom = Math.max(72, vh * 0.10) + 250
+    // Hero text ends roughly here — mobile needs more room (text wraps more)
+    const heroBottom = Math.max(72, vh * 0.10) + (vw < 480 ? 310 : 250)
 
     // Initial x: spread evenly across full width, outermost planets bleed off edges
     const positions: { x: number; y: number }[] = polls.map((poll, i) => {
@@ -199,7 +199,7 @@ export default function Home() {
 
   useEffect(() => {
     if (planets.length === 0) return
-    const heroBottom = Math.max(72, vh * 0.10) + 250
+    const heroBottom = Math.max(72, vh * 0.10) + (vw < 480 ? 310 : 250)
     const pad = 28
 
     physicsRef.current = planets.map(p => {
@@ -274,8 +274,9 @@ export default function Home() {
       {!day && <Stars vw={vw} vh={vh} />}
 
       <div style={{
-        position: 'absolute', top: '7%', right: '7%',
-        width: day ? 140 : 120, height: day ? 140 : 120,
+        position: 'absolute', top: '10%', right: '5%',
+        width: vw < 480 ? 70 : day ? 140 : 120,
+        height: vw < 480 ? 70 : day ? 140 : 120,
         borderRadius: '50%',
         background: day
           ? 'radial-gradient(circle, #ffe7b8 0%, #ffb05a 65%, transparent 100%)'
@@ -287,19 +288,19 @@ export default function Home() {
       <div style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '20px 28px', pointerEvents: 'none',
+        padding: vw < 480 ? '14px 16px' : '20px 28px', pointerEvents: 'none',
       }}>
-        <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <svg width="32" height="22" viewBox="0 0 32 22" fill="none" style={{ opacity: 0.9 }}>
+        <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="28" height="20" viewBox="0 0 32 22" fill="none" style={{ opacity: 0.9 }}>
             <ellipse cx="16" cy="11" rx="14" ry="5" stroke={textColor} strokeWidth="1.5" fill="none" opacity="0.5"
               style={{ clipPath: 'inset(50% 0 0 0)' }} />
             <circle cx="16" cy="11" r="8" fill={textColor} opacity="0.92" />
             <ellipse cx="16" cy="11" rx="14" ry="5" stroke={textColor} strokeWidth="1.5" fill="none" opacity="0.85"
               style={{ clipPath: 'inset(0 0 50% 0)' }} />
           </svg>
-          <h1 style={{ fontSize: 26, fontWeight: 700, color: textColor, margin: 0, fontFamily: serif }}>Majority</h1>
+          <h1 style={{ fontSize: vw < 480 ? 20 : 26, fontWeight: 700, color: textColor, margin: 0, fontFamily: serif }}>Majority</h1>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', pointerEvents: 'auto' }}>
+        <div style={{ display: 'flex', gap: vw < 480 ? 6 : 10, alignItems: 'center', pointerEvents: 'auto' }}>
           {channel && (
             <div style={{ position: 'relative' }}>
               <button
@@ -307,14 +308,14 @@ export default function Home() {
                 style={{
                   background: 'none', cursor: 'pointer',
                   color: textColor, fontSize: 13, fontWeight: 500,
-                  padding: '9px 14px', borderRadius: 100,
+                  padding: vw < 480 ? '7px 10px' : '9px 14px', borderRadius: 100,
                   border: `1px solid ${day ? 'rgba(42,26,94,0.2)' : 'rgba(245,240,232,0.2)'}`,
-                  display: 'flex', alignItems: 'center', gap: 6,
+                  display: 'flex', alignItems: 'center', gap: 4,
                   fontFamily: 'inherit',
                 }}
               >
                 <span style={{ fontSize: 16 }}>{getChannel(channel).flag}</span>
-                <span>{getChannel(channel).name}</span>
+                {vw >= 480 && <span>{getChannel(channel).name}</span>}
               </button>
               {showChannelDropdown && (
                 <div style={{
@@ -347,22 +348,28 @@ export default function Home() {
               )}
             </div>
           )}
-          <a href="/dashboard" style={{
-            color: textColor, fontSize: 13, fontWeight: 500, textDecoration: 'none',
-            padding: '9px 18px', borderRadius: 100,
-            border: `1px solid ${day ? 'rgba(42,26,94,0.2)' : 'rgba(245,240,232,0.2)'}`,
-          }}>
-            {t(ch, 'nav.mypolls')}
-          </a>
-          <a href="/create" style={{
-            background: day ? 'rgba(42,26,94,0.85)' : 'rgba(245,240,232,0.12)',
-            color: day ? '#fff' : textColor,
-            border: `1px solid ${day ? 'transparent' : 'rgba(245,240,232,0.3)'}`,
-            padding: '9px 22px', borderRadius: 100,
-            fontSize: 13, fontWeight: 600, textDecoration: 'none',
-          }}>
-            {t(ch, 'nav.ask')}
-          </a>
+          {/* My polls — hidden on mobile to save space */}
+          {vw >= 480 && (
+            <a href="/dashboard" style={{
+              color: textColor, fontSize: 13, fontWeight: 500, textDecoration: 'none',
+              padding: '9px 18px', borderRadius: 100,
+              border: `1px solid ${day ? 'rgba(42,26,94,0.2)' : 'rgba(245,240,232,0.2)'}`,
+            }}>
+              {t(ch, 'nav.mypolls')}
+            </a>
+          )}
+          {/* Ask — hidden on mobile (ASK planet handles it) */}
+          {vw >= 480 && (
+            <a href="/create" style={{
+              background: day ? 'rgba(42,26,94,0.85)' : 'rgba(245,240,232,0.12)',
+              color: day ? '#fff' : textColor,
+              border: `1px solid ${day ? 'transparent' : 'rgba(245,240,232,0.3)'}`,
+              padding: '9px 22px', borderRadius: 100,
+              fontSize: 13, fontWeight: 600, textDecoration: 'none',
+            }}>
+              {t(ch, 'nav.ask')}
+            </a>
+          )}
           {/* Day/night toggle */}
           <button
             onClick={() => setDayNightOverride(!day)}
@@ -370,25 +377,27 @@ export default function Home() {
             style={{
               background: day ? 'rgba(42,26,94,0.1)' : 'rgba(245,240,232,0.1)',
               border: `1px solid ${day ? 'rgba(42,26,94,0.2)' : 'rgba(245,240,232,0.2)'}`,
-              borderRadius: 100, padding: '7px 12px',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
+              borderRadius: 100, padding: vw < 480 ? '6px 8px' : '7px 12px',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
               backdropFilter: 'blur(8px)',
               transition: 'background 0.3s',
             }}
           >
-            <span style={{ fontSize: 15 }}>{day ? '☀️' : '🌙'}</span>
-            <div style={{
-              width: 32, height: 18, borderRadius: 100,
-              background: day ? 'rgba(42,26,94,0.3)' : 'rgba(245,240,232,0.3)',
-              position: 'relative', transition: 'background 0.3s',
-            }}>
+            <span style={{ fontSize: 14 }}>{day ? '☀️' : '🌙'}</span>
+            {vw >= 480 && (
               <div style={{
-                position: 'absolute', top: 2, left: day ? 14 : 2,
-                width: 14, height: 14, borderRadius: '50%',
-                background: day ? '#2a1a5e' : '#f5f0e8',
-                transition: 'left 0.25s cubic-bezier(0.4,0,0.2,1)',
-              }} />
-            </div>
+                width: 32, height: 18, borderRadius: 100,
+                background: day ? 'rgba(42,26,94,0.3)' : 'rgba(245,240,232,0.3)',
+                position: 'relative', transition: 'background 0.3s',
+              }}>
+                <div style={{
+                  position: 'absolute', top: 2, left: day ? 14 : 2,
+                  width: 14, height: 14, borderRadius: '50%',
+                  background: day ? '#2a1a5e' : '#f5f0e8',
+                  transition: 'left 0.25s cubic-bezier(0.4,0,0.2,1)',
+                }} />
+              </div>
+            )}
           </button>
         </div>
       </div>
