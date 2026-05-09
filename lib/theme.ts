@@ -42,14 +42,14 @@ export interface TopicPalette {
 }
 
 export const COSMOS_TOPICS: TopicPalette[] = [
-  { topic: 'food',     colorA: '#ff6040', colorB: '#40d9b0', glow: '#ff6040' },
-  { topic: 'tech',     colorA: '#6040ff', colorB: '#ffd060', glow: '#6040ff' },
-  { topic: 'culture',  colorA: '#f040a0', colorB: '#40e0c0', glow: '#f040a0' },
-  { topic: 'work',     colorA: '#ff9020', colorB: '#4080ff', glow: '#ff9020' },
-  { topic: 'lifestyle',colorA: '#30c878', colorB: '#e050d0', glow: '#30c878' },
-  { topic: 'sports',   colorA: '#ff3060', colorB: '#30b0ff', glow: '#ff3060' },
-  { topic: 'science',  colorA: '#8040ff', colorB: '#40e080', glow: '#8040ff' },
-  { topic: 'politics', colorA: '#3060f0', colorB: '#f06030', glow: '#3060f0' },
+  { topic: 'food',      colorA: '#ff5252', colorB: '#ffd200', glow: '#ff8c42' },  // red → gold
+  { topic: 'tech',      colorA: '#448aff', colorB: '#d500f9', glow: '#7c4dff' },  // blue → magenta
+  { topic: 'culture',   colorA: '#ff4081', colorB: '#ff9100', glow: '#ff6d3a' },  // pink → amber
+  { topic: 'work',      colorA: '#ffab00', colorB: '#00bcd4', glow: '#ff8f00' },  // amber → cyan
+  { topic: 'lifestyle', colorA: '#00e5ff', colorB: '#ff6d9d', glow: '#00b8d4' },  // cyan → rose
+  { topic: 'sports',    colorA: '#ff1744', colorB: '#00e676', glow: '#ff5252' },  // red → green
+  { topic: 'science',   colorA: '#7c4dff', colorB: '#00e5ff', glow: '#651fff' },  // violet → cyan
+  { topic: 'politics',  colorA: '#2979ff', colorB: '#ff3d00', glow: '#5c6bc0' },  // blue → red-orange
 ];
 
 /**

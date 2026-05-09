@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { assignPalette } from '@/lib/theme'
-import { useDayNight } from '@/components/cosmos/useDayNight'
+import { useDayNight, setDayNightOverride } from '@/components/cosmos/useDayNight'
 import { useViewport } from '@/components/cosmos/useOrbit'
 import { getChannel, CHANNELS } from '@/lib/channels'
 import { t } from '@/lib/i18n'
@@ -24,6 +24,18 @@ function formatVotes(n: number): string {
   return String(n)
 }
 
+const MIN_GAP = 24
+const ASK_R = 54
+
+function mixHex(a: string, b: string): string {
+  const p = (s: string) => parseInt(s.replace('#', ''), 16)
+  const n1 = p(a), n2 = p(b)
+  const r = Math.round(((n1 >> 16) & 255) * 0.5 + ((n2 >> 16) & 255) * 0.5)
+  const g = Math.round(((n1 >> 8) & 255) * 0.5 + ((n2 >> 8) & 255) * 0.5)
+  const bl = Math.round((n1 & 255) * 0.5 + (n2 & 255) * 0.5)
+  return `rgb(${r},${g},${bl})`
+}
+
 function det(id: string, salt: number): number {
   let h = 2166136261 ^ salt
   for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619) }
@@ -37,27 +49,13 @@ export default function Home() {
   const [polls, setPolls] = useState<PollData[]>([])
   const [loading, setLoading] = useState(true)
   const [zoomingId, setZoomingId] = useState<string | null>(null)
+  const [wormhole, setWormhole] = useState<{ x: number; y: number; colorA: string; colorB: string } | null>(null)
   const [channel, setChannel] = useState<string | null>(null)
   const [showChannelDropdown, setShowChannelDropdown] = useState(false)
 
-  // Load channel from localStorage or detect silently from IP
   useEffect(() => {
     const saved = localStorage.getItem('majority_channel')
-    if (saved) {
-      setChannel(saved)
-    } else {
-      fetch('/api/detect-channel')
-        .then(r => r.json())
-        .then(d => {
-          const detected = d.channel || 'global'
-          localStorage.setItem('majority_channel', detected)
-          setChannel(detected)
-        })
-        .catch(() => {
-          localStorage.setItem('majority_channel', 'global')
-          setChannel('global')
-        })
-    }
+    setChannel(saved || 'global')
   }, [])
 
   function handleChannelSelect(id: string) {
@@ -106,46 +104,151 @@ export default function Home() {
   }, [channel])
 
   const planets = useMemo(() => {
-    const cx = vw * 0.44
-    const cy = vh * 0.82
-    const maxR = Math.min(vw * 0.09, 110)
-    const minR = Math.min(vw * 0.05, 58)
-    const golden = 2.399
+    const n = polls.length
+    if (n === 0) return []
+
+    // Large planet radii — fill the screen like the reference design
+    const minR = vw < 480 ? 90  : vw < 768 ? 115 : 140
+    const maxR = vw < 480 ? 135 : vw < 768 ? 170 : 210
+    const radii = polls.map(p =>
+      Math.min(minR + Math.sqrt(p.voteCount) * 4, maxR)
+    )
+
+    // Hero text ends roughly here
+    const heroBottom = Math.max(72, vh * 0.10) + 250
+
+    // Initial x: spread evenly across full width, outermost planets bleed off edges
+    const positions: { x: number; y: number }[] = polls.map((poll, i) => {
+      const r = radii[i]
+      const s1 = det(poll.id, 11)
+      const s2 = det(poll.id, 22)
+
+      const t = n === 1 ? 0.5 : i / (n - 1)
+      const xLeft  = n <= 2 ? r * 0.5 : -r * 0.1
+      const xRight = n <= 2 ? vw - r * 0.5 : vw + r * 0.1
+      const x = xLeft + t * (xRight - xLeft) + (s1 - 0.5) * r * 0.4
+
+      // Two staggered rows; keep within viewport vertically
+      const row = i % 2
+      const yRow = heroBottom + r + row * r * 0.55 + (s2 - 0.5) * r * 0.2
+      const y = Math.min(yRow, vh - r * 0.45)
+
+      return { x, y }
+    })
+
+    // Collision avoidance — push overlapping planets apart
+    for (let iter = 0; iter < 40; iter++) {
+      let moved = false
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const dx = positions[j].x - positions[i].x
+          const dy = positions[j].y - positions[i].y
+          const dist = Math.hypot(dx, dy) || 0.001
+          const need = radii[i] + radii[j] + MIN_GAP
+          if (dist < need) {
+            const over = (need - dist) / 2
+            const nx = dx / dist, ny = dy / dist
+            positions[i].x -= nx * over * 0.7
+            positions[j].x += nx * over * 0.7
+            positions[i].y -= ny * over * 0.3
+            positions[j].y += ny * over * 0.3
+            moved = true
+          }
+        }
+      }
+      if (!moved) break
+    }
 
     return polls.map((poll, i) => {
-      const r = maxR - (i / Math.max(polls.length - 1, 1)) * (maxR - minR)
-      const angle = i * golden + Math.PI * 0.25
-      const spread = i === 0 ? 40 : 120 + i * 56
-      const x = cx + Math.cos(angle) * spread + (det(poll.id, 20) - 0.5) * 36
-      const y = cy + Math.sin(angle) * spread * 0.45 + (det(poll.id, 21) - 0.5) * 22
+      const r = radii[i]
       const { colorA, colorB } = assignPalette(poll.id)
-      const floatDur = 4 + det(poll.id, 23) * 3
-      const floatDelay = -det(poll.id, 24) * 5
-      return { poll, r, x, y, colorA, colorB, floatDur, floatDelay }
+      const seed = det(poll.id, 99)
+      const floatDur  = 2.8 + seed * 2.8   // 2.8s – 5.6s, each planet different
+      const floatDelay = -(seed * floatDur)
+      const amp = 15 + Math.round(seed * 13) // 15–28px — lively independent float
+
+      return { poll, r, x: positions[i].x, y: positions[i].y, colorA, colorB, floatDur, floatDelay, amp }
     })
   }, [polls, vw, vh])
 
-  // ASK planet continues the phyllotaxis spiral after all poll planets
   const askPos = useMemo(() => {
-    const cx = vw * 0.44
-    const cy = vh * 0.82
-    const golden = 2.399
-    const n = polls.length
-    const angle = n * golden + Math.PI * 0.25
-    const spread = n === 0 ? 200 : 120 + n * 56
-    return {
-      x: cx + Math.cos(angle) * spread,
-      y: cy + Math.sin(angle) * spread * 0.45,
+    const fallbackX = vw * 0.5
+    const fallbackY = vh * 0.75
+    if (planets.length === 0) return { x: fallbackX, y: fallbackY }
+
+    // Find a gap inside the planet cluster
+    const midX = planets.reduce((s, p) => s + p.x, 0) / planets.length
+    const midY = planets.reduce((s, p) => s + p.y, 0) / planets.length
+    for (let dist = 0; dist <= 500; dist += 18) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+        const ax = midX + Math.cos(a) * dist
+        const ay = midY + Math.sin(a) * dist
+        if (planets.every(p => Math.hypot(ax - p.x, ay - p.y) >= ASK_R + p.r + 20))
+          return { x: ax, y: ay }
+      }
     }
-  }, [polls.length, vw, vh])
+    const maxY = Math.max(...planets.map(p => p.y + p.r))
+    return { x: midX, y: maxY + 24 + ASK_R }
+  }, [planets, vw, vh])
+
+  // Physics bounce animation — declared after planets/askPos useMemos
+  const containerRefs = useRef<(HTMLDivElement | null)[]>([])
+  const physicsRef = useRef<{ x: number; y: number; vx: number; vy: number; spd: number }[]>([])
+  const rafRef = useRef<number | null>(null)
+  const hoveredIdxRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (planets.length === 0) return
+    const heroBottom = Math.max(72, vh * 0.10) + 250
+    const pad = 28
+
+    physicsRef.current = planets.map(p => {
+      const angle = det(p.poll.id, 55) * Math.PI * 2
+      const spd = 0.5 + det(p.poll.id, 66) * 0.65
+      return { x: p.x, y: p.y, vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd, spd }
+    })
+
+    const tick = () => {
+      physicsRef.current.forEach((pos, i) => {
+        if (i === hoveredIdxRef.current) return
+        const planet = planets[i]
+        if (!planet) return
+        const { r, amp } = planet
+
+        pos.vx += (Math.random() - 0.5) * 0.018
+        pos.vy += (Math.random() - 0.5) * 0.018
+        const s = Math.hypot(pos.vx, pos.vy) || 0.001
+        if (s > pos.spd * 2.0) { pos.vx *= pos.spd * 2.0 / s; pos.vy *= pos.spd * 2.0 / s }
+        if (s < pos.spd * 0.3) { pos.vx *= pos.spd * 0.3 / s; pos.vy *= pos.spd * 0.3 / s }
+
+        pos.x += pos.vx
+        pos.y += pos.vy
+
+        if (pos.x - r < pad)              { pos.x = pad + r;              pos.vx =  Math.abs(pos.vx) }
+        if (pos.x + r > vw - pad)         { pos.x = vw - pad - r;         pos.vx = -Math.abs(pos.vx) }
+        if (pos.y - r < heroBottom + amp) { pos.y = heroBottom + amp + r;  pos.vy =  Math.abs(pos.vy) }
+        if (pos.y + r > vh - pad - amp)   { pos.y = vh - pad - amp - r;    pos.vy = -Math.abs(pos.vy) }
+
+        const el = containerRefs.current[i]
+        if (el) el.style.transform = `translate(${pos.x - r}px, ${pos.y - r}px)`
+      })
+      rafRef.current = requestAnimationFrame(tick)
+    }
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    rafRef.current = requestAnimationFrame(tick)
+    return () => { if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null } }
+  }, [planets, vw, vh])
 
   const totalVotes = polls.reduce((s, p) => s + p.voteCount, 0)
   const ch = channel || 'global'
 
-  function handleClick(id: string) {
+  function handleClick(id: string, idx: number, colorA: string, colorB: string) {
     if (zoomingId) return
+    const pos = physicsRef.current[idx]
+    if (pos) setWormhole({ x: pos.x, y: pos.y, colorA, colorB })
     setZoomingId(id)
-    setTimeout(() => router.push(`/poll/${id}`), 600)
+    setTimeout(() => router.push(`/poll/${id}`), 700)
   }
 
   const serif = '"Cormorant Garamond", Georgia, "Times New Roman", serif'
@@ -155,7 +258,6 @@ export default function Home() {
     ? 'linear-gradient(160deg, #d6e9f5 0%, #f3e5d0 60%, #ffd9b8 100%)'
     : 'linear-gradient(160deg, #1a0e3a 0%, #2d1b5e 45%, #1e1040 100%)'
 
-  // Render headline with optional styled italic word
   function renderHeadline() {
     const template = t(ch, 'home.headline')
     const theWord = t(ch, 'home.headline.the')
@@ -169,10 +271,8 @@ export default function Home() {
   return (
     <div style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative', background: bgGradient }}>
 
-      {/* Night stars */}
       {!day && <Stars vw={vw} vh={vh} />}
 
-      {/* Moon / Sun */}
       <div style={{
         position: 'absolute', top: '7%', right: '7%',
         width: day ? 140 : 120, height: day ? 140 : 120,
@@ -200,7 +300,6 @@ export default function Home() {
           <h1 style={{ fontSize: 26, fontWeight: 700, color: textColor, margin: 0, fontFamily: serif }}>Majority</h1>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', pointerEvents: 'auto' }}>
-          {/* Channel switcher */}
           {channel && (
             <div style={{ position: 'relative' }}>
               <button
@@ -227,20 +326,20 @@ export default function Home() {
                   minWidth: 200, maxHeight: 360, overflowY: 'auto',
                   boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
                 }}>
-                  {CHANNELS.map(ch => (
-                    <button key={ch.id} onClick={() => { handleChannelSelect(ch.id); setShowChannelDropdown(false) }}
+                  {CHANNELS.map(c => (
+                    <button key={c.id} onClick={() => { handleChannelSelect(c.id); setShowChannelDropdown(false) }}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 10,
                         width: '100%', padding: '10px 12px', borderRadius: 10,
-                        border: 'none', background: channel === ch.id
+                        border: 'none', background: channel === c.id
                           ? (day ? 'rgba(42,26,94,0.08)' : 'rgba(245,240,232,0.08)')
                           : 'transparent',
                         cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
                       }}>
-                      <span style={{ fontSize: 18 }}>{ch.flag}</span>
+                      <span style={{ fontSize: 18 }}>{c.flag}</span>
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: textColor }}>{ch.name}</div>
-                        <div style={{ fontSize: 11, color: day ? '#7a6a9e' : '#b0a8cc' }}>{ch.language}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: textColor }}>{c.name}</div>
+                        <div style={{ fontSize: 11, color: day ? '#7a6a9e' : '#b0a8cc' }}>{c.language}</div>
                       </div>
                     </button>
                   ))}
@@ -264,15 +363,42 @@ export default function Home() {
           }}>
             {t(ch, 'nav.ask')}
           </a>
+          {/* Day/night toggle */}
+          <button
+            onClick={() => setDayNightOverride(!day)}
+            aria-label="Toggle day/night"
+            style={{
+              background: day ? 'rgba(42,26,94,0.1)' : 'rgba(245,240,232,0.1)',
+              border: `1px solid ${day ? 'rgba(42,26,94,0.2)' : 'rgba(245,240,232,0.2)'}`,
+              borderRadius: 100, padding: '7px 12px',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
+              backdropFilter: 'blur(8px)',
+              transition: 'background 0.3s',
+            }}
+          >
+            <span style={{ fontSize: 15 }}>{day ? '☀️' : '🌙'}</span>
+            <div style={{
+              width: 32, height: 18, borderRadius: 100,
+              background: day ? 'rgba(42,26,94,0.3)' : 'rgba(245,240,232,0.3)',
+              position: 'relative', transition: 'background 0.3s',
+            }}>
+              <div style={{
+                position: 'absolute', top: 2, left: day ? 14 : 2,
+                width: 14, height: 14, borderRadius: '50%',
+                background: day ? '#2a1a5e' : '#f5f0e8',
+                transition: 'left 0.25s cubic-bezier(0.4,0,0.2,1)',
+              }} />
+            </div>
+          </button>
         </div>
       </div>
 
       {/* Hero text */}
       {!loading && (
         <div style={{
-          position: 'absolute', top: '13%', left: 0, right: 0,
+          position: 'absolute', top: 'max(72px, 10%)', left: 0, right: 0,
           display: 'flex', flexDirection: 'column', alignItems: 'center',
-          gap: 12, padding: '0 24px', pointerEvents: 'none', zIndex: 10,
+          gap: 8, padding: '0 24px', pointerEvents: 'none', zIndex: 10,
         }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
@@ -288,7 +414,7 @@ export default function Home() {
 
           <div style={{
             fontFamily: serif,
-            fontSize: 'clamp(38px, 7.5vw, 92px)',
+            fontSize: 'clamp(34px, 6vw, 76px)',
             fontWeight: 400, color: textColor,
             textAlign: 'center', lineHeight: 1.08,
             maxWidth: 700,
@@ -321,79 +447,122 @@ export default function Home() {
       {/* Planet cluster */}
       {!loading && polls.length > 0 && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 5 }}>
-          {planets.map(({ poll, r, x, y, colorA, colorB, floatDur, floatDelay }) => {
-            const pctA = poll.totals.total > 0 ? Math.round(poll.totals.a / poll.totals.total * 100) : 50
-            const pctB = 100 - pctA
-            const gradient = `radial-gradient(circle at 38% 32%, ${colorA} 0%, ${colorB} 100%)`
+          {planets.map(({ poll, r, colorA, colorB, floatDur, floatDelay, amp }, idx) => {
+            const mid = mixHex(colorA, colorB)
+            const gradient = `radial-gradient(circle at 35% 32%, ${colorA} 0%, ${mid} 52%, ${colorB} 100%)`
             return (
-              <button
+              // Outer div: RAF moves this via transform (drift/bounce)
+              <div
                 key={poll.id}
-                onClick={() => handleClick(poll.id)}
-                aria-label={poll.question}
-                className={zoomingId === poll.id ? 'bubble-zoom' : ''}
+                ref={el => { containerRefs.current[idx] = el }}
                 style={{
-                  position: 'absolute',
-                  left: x - r, top: y - r, width: r * 2, height: r * 2,
-                  borderRadius: '50%', border: 'none', cursor: 'pointer',
-                  background: gradient,
-                  boxShadow: `0 12px 48px ${colorA}55, 0 4px 24px ${colorB}44`,
-                  display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center',
-                  textAlign: 'center', padding: '12%',
-                  animation: zoomingId === poll.id ? undefined : `float ${floatDur}s ease-in-out ${floatDelay}s infinite`,
+                  position: 'absolute', left: 0, top: 0,
+                  width: r * 2, height: r * 2,
                   zIndex: zoomingId === poll.id ? 50 : 5,
-                  transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+                  pointerEvents: 'none',
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.06)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)' }}
               >
-                <span style={{
-                  color: '#fff', fontWeight: 700,
-                  fontSize: r > 95 ? 16 : r > 70 ? 14 : 12,
-                  lineHeight: 1.3, textShadow: '0 1px 8px rgba(0,0,0,0.35)',
-                  display: '-webkit-box', WebkitLineClamp: 3,
-                  WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                  maxWidth: '80%',
-                }}>
-                  {poll.question}
-                </span>
-                {poll.voteCount > 0 && (
-                  <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: r > 80 ? 11 : 10, marginTop: 6, fontWeight: 600 }}>
-                    {formatVotes(poll.voteCount)} · {pctA}/{pctB}
+                {/* Inner button: CSS planetFloat handles the vertical bob */}
+                <button
+                  onClick={() => handleClick(poll.id, idx, colorA, colorB)}
+                  aria-label={poll.question}
+                  className={zoomingId === poll.id ? 'planet-wormhole' : ''}
+                  style={{
+                    position: 'absolute', inset: 0,
+                    borderRadius: '50%', border: 'none', cursor: 'pointer',
+                    background: gradient,
+                    boxShadow: `0 8px 32px ${colorA}66, 0 2px 12px ${colorB}55`,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    textAlign: 'center', padding: 14,
+                    ['--amp' as string]: String(amp),
+                    animation: zoomingId === poll.id ? undefined : `planetFloat ${floatDur}s ease-in-out ${floatDelay}s infinite`,
+                    transition: 'box-shadow 0.3s ease',
+                    pointerEvents: 'auto',
+                  }}
+                  onMouseEnter={e => { hoveredIdxRef.current = idx; (e.currentTarget as HTMLElement).style.animationPlayState = 'paused' }}
+                  onMouseLeave={e => { hoveredIdxRef.current = null; (e.currentTarget as HTMLElement).style.animationPlayState = 'running' }}
+                >
+                  <span style={{
+                    color: '#fff', fontWeight: 700,
+                    fontSize: r > 160 ? 16 : r > 130 ? 15 : r > 100 ? 14 : 13,
+                    lineHeight: 1.35, textShadow: '0 1px 10px rgba(0,0,0,0.4)',
+                    display: '-webkit-box', WebkitLineClamp: 4,
+                    WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                    maxWidth: '82%',
+                  }}>
+                    {poll.question}
                   </span>
-                )}
-              </button>
+                </button>
+              </div>
             )
           })}
 
-          {/* ASK planet */}
-          <button
-            onClick={() => router.push('/create')}
-            aria-label="Ask the world a question"
-            style={{
-              position: 'absolute',
-              left: askPos.x - 56, top: askPos.y - 56,
-              width: 112, height: 112, borderRadius: '50%',
-              border: `2px dashed ${day ? 'rgba(42,26,94,0.45)' : 'rgba(245,240,232,0.45)'}`,
-              background: 'transparent', cursor: 'pointer',
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              animation: 'float 5.5s ease-in-out -1s infinite',
-              transition: 'background 0.3s',
-              zIndex: 5,
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = day ? 'rgba(42,26,94,0.06)' : 'rgba(255,255,255,0.07)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            <span style={{ color: day ? 'rgba(42,26,94,0.7)' : 'rgba(245,240,232,0.8)', fontSize: 26, fontWeight: 300, lineHeight: 1 }}>+</span>
-            <span style={{ color: day ? 'rgba(42,26,94,0.6)' : 'rgba(245,240,232,0.7)', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 4 }}>
-              {t(ch, 'home.ask')}
-            </span>
-            <span style={{ color: day ? 'rgba(42,26,94,0.5)' : 'rgba(245,240,232,0.6)', fontSize: 9, fontWeight: 400, marginTop: 1 }}>
-              {t(ch, 'home.ask.sub')}
-            </span>
-          </button>
+          {/* ASK planet — crystal clear glass orb */}
+          {(() => {
+            const r = ASK_R
+            const dashLen = (2 * Math.PI * (r - 2)) / 12
+            return (
+              <button
+                onClick={() => router.push('/create')}
+                aria-label="Ask the world a question"
+                style={{
+                  position: 'absolute',
+                  left: askPos.x - ASK_R, top: askPos.y - ASK_R,
+                  width: ASK_R * 2, height: ASK_R * 2,
+                  borderRadius: '50%', border: 'none',
+                  background: 'radial-gradient(circle at 32% 28%, rgba(255,255,255,0.55) 0%, rgba(220,240,255,0.22) 45%, rgba(180,220,255,0.08) 100%)',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                  boxShadow: '0 4px 28px rgba(180,220,255,0.35), inset 0 1px 2px rgba(255,255,255,0.6)',
+                  cursor: 'pointer', padding: 0,
+                  ['--amp' as string]: '14',
+                  animation: 'planetFloat 4.8s ease-in-out -1.4s infinite',
+                  zIndex: 6,
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.animationPlayState = 'paused' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.animationPlayState = 'running' }}
+              >
+                {/* Dashed crystal border ring */}
+                <svg width={r * 2} height={r * 2} viewBox={`0 0 ${r * 2} ${r * 2}`} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                  <circle
+                    cx={r} cy={r} r={r - 2}
+                    fill="none"
+                    stroke="rgba(255,255,255,0.7)"
+                    strokeWidth="1.5"
+                    strokeDasharray={`${dashLen * 0.5} ${dashLen * 0.5}`}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                {/* Content */}
+                <div style={{
+                  position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center', gap: 3,
+                }}>
+                  <span style={{ color: '#fff', fontSize: 26, fontWeight: 300, lineHeight: 1, opacity: 0.95, textShadow: '0 1px 8px rgba(100,180,255,0.6)' }}>+</span>
+                  <span style={{ color: '#fff', fontSize: 12, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', textShadow: '0 1px 8px rgba(100,180,255,0.5)' }}>
+                    ASK
+                  </span>
+                  <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 9, fontWeight: 400, letterSpacing: '0.05em' }}>
+                    your own
+                  </span>
+                </div>
+              </button>
+            )
+          })()}
         </div>
+      )}
+
+      {/* Wormhole bloom overlay */}
+      {wormhole && (
+        <div
+          className="wormhole-bloom"
+          style={{
+            left: wormhole.x,
+            top: wormhole.y,
+            background: `radial-gradient(circle at center, rgba(255,255,255,0.92) 0%, ${wormhole.colorA} 45%, ${wormhole.colorB} 100%)`,
+          }}
+        />
       )}
 
       {/* Bottom stats bar */}

@@ -17,7 +17,6 @@ import { useViewport, useOrbit, useMouseParallax } from '@/components/cosmos/use
 import { DaySky } from '@/components/cosmos/DaySky';
 import { NightSky } from '@/components/cosmos/NightSky';
 import { DemographicRings } from '@/components/cosmos/DemographicRings';
-import { t as tr } from '@/lib/i18n';
 
 interface Poll {
   id: string;
@@ -62,8 +61,6 @@ export default function PollPage() {
   const [ageBreakdown, setAgeBreakdown] = useState<AgeBreakdown | null>(null);
   const [fingerprint, setFingerprint] = useState('');
   const [canChange, setCanChange] = useState(false);
-  const [hasChanged, setHasChanged] = useState(false);
-  const [confirmChoice, setConfirmChoice] = useState<1 | 2 | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [zoomingChoice, setZoomingChoice] = useState<1 | 2 | null>(null);
@@ -75,23 +72,8 @@ export default function PollPage() {
   const [demoError, setDemoError] = useState('');
   const [demoSubmitting, setDemoSubmitting] = useState(false);
 
-  const [channel, setChannel] = useState('global');
-  useEffect(() => {
-    const saved = localStorage.getItem('majority_channel');
-    if (saved) {
-      setChannel(saved);
-    } else {
-      fetch('/api/detect-channel')
-        .then(r => r.json())
-        .then(d => {
-          const detected = d.channel || 'global';
-          localStorage.setItem('majority_channel', detected);
-          setChannel(detected);
-        });
-    }
-  }, []);
-  const palette = id ? assignPalette(id) : assignPalette('default');
-  const { colorA, colorB } = palette;
+  // Same palette as the homepage planet so colors match on click-through
+  const { colorA, colorB } = id ? assignPalette(id) : assignPalette('default');
 
   const fetchVoteData = useCallback(async () => {
     const { data } = await supabase
@@ -142,8 +124,7 @@ export default function PollPage() {
 
       if (voteData.vote) {
         setSelectedChoice(voteData.vote.choice);
-        setHasChanged(voteData.vote.has_changed ?? false);
-        setCanChange(!voteData.vote.has_changed && new Date() < new Date(voteData.vote.can_change_until));
+        setCanChange(new Date() < new Date(voteData.vote.can_change_until));
         await fetchVoteData();
         setStage(voteData.vote.voter_age == null ? 'demographic' : 'results');
       }
@@ -152,37 +133,45 @@ export default function PollPage() {
     init();
   }, [id, fetchVoteData]);
 
-  function handleVote(choice: 1 | 2) {
-    if (zoomingChoice) return;
+  async function handleVote(choice: 1 | 2) {
+    if (submitting || zoomingChoice) return;
     setZoomingChoice(choice);
-    setTimeout(() => {
-      setSelectedChoice(choice);
-      setZoomingChoice(null);
-      setStage('demographic');
+    setTimeout(async () => {
+      setSubmitting(true);
+      setError('');
+      try {
+        const res = await fetch('/api/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ poll_id: id, choice, fingerprint }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to vote');
+        setSelectedChoice(choice);
+        await fetchVoteData();
+        setStage('demographic');
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to vote');
+        setStage('voting');
+      } finally {
+        setSubmitting(false);
+        setZoomingChoice(null);
+      }
     }, 600);
   }
 
   async function handleChangeVote(choice: 1 | 2) {
-    if (!canChange || submitting || hasChanged) return;
-    // Show confirmation popup instead of immediately changing
-    setConfirmChoice(choice);
-  }
-
-  async function confirmChangeVote() {
-    if (!confirmChoice) return;
+    if (!canChange || submitting) return;
     setSubmitting(true);
-    setConfirmChoice(null);
     try {
       const res = await fetch('/api/vote', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ poll_id: id, choice: confirmChoice, fingerprint }),
+        body: JSON.stringify({ poll_id: id, choice, fingerprint }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setSelectedChoice(confirmChoice);
-      setHasChanged(true);
-      setCanChange(false);
+      setSelectedChoice(choice);
       await fetchVoteData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to change vote');
@@ -198,22 +187,14 @@ export default function PollPage() {
     if (!gender) { setDemoError('Please select your gender.'); return; }
     setDemoError('');
     setDemoSubmitting(true);
-    try {
-      const res = await fetch('/api/vote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ poll_id: id, choice: selectedChoice, fingerprint, age: parseInt(age), gender }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to submit');
-      await fetchVoteData();
-      setCanChange(true);
-      setStage('results');
-    } catch (err: unknown) {
-      setDemoError(err instanceof Error ? err.message : 'Failed to submit');
-    } finally {
-      setDemoSubmitting(false);
-    }
+    await fetch('/api/update-demographic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ poll_id: id, fingerprint, age: parseInt(age), gender }),
+    });
+    await fetchVoteData();
+    setDemoSubmitting(false);
+    setStage('results');
   }
 
   async function handleReport() {
@@ -271,7 +252,7 @@ export default function PollPage() {
 
   // Two-planet layout — left/right of center, gentle bob
   const cx = vw / 2;
-  const cy = vh * 0.55;
+  const cy = vh * 0.50;
   const sep = Math.min(vw * 0.32, 240);
   const bob1 = Math.sin(t * 0.8) * 6;
   const bob2 = Math.sin(t * 0.8 + 1.6) * 6;
@@ -284,7 +265,7 @@ export default function PollPage() {
       {day ? <DaySky w={vw} h={vh} /> : <NightSky w={vw} h={vh} />}
 
       <button
-        onClick={() => stage === 'demographic' ? setStage('voting') : router.push('/')}
+        onClick={() => router.push('/')}
         style={{
           position: 'fixed', top: 24, left: 24, zIndex: 100,
           background: 'none', border: 'none', cursor: 'pointer',
@@ -294,25 +275,26 @@ export default function PollPage() {
         ← Back
       </button>
 
-      {/* Question — centered, kept away from moon (top-right) */}
+      {/* Question — always at top */}
       <div
         className="cosmos-fade-up"
         style={{
-          position: 'absolute', top: '12%',
-          left: 0, right: 0,
-          padding: '0 10%',
-          textAlign: 'center', zIndex: 5,
+          position: 'absolute', top: '14%', left: 0, right: 0,
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          padding: '0 24px', textAlign: 'center', zIndex: 5,
         }}
       >
         <p style={{
-          fontSize: 'clamp(20px, 3.5vw, 28px)', fontWeight: 700,
-          color: textColor, lineHeight: 1.3, margin: 0,
+          fontSize: 'clamp(24px, 4.5vw, 38px)', fontWeight: 600,
+          color: textColor, lineHeight: 1.2, margin: 0,
+          maxWidth: 540,
+          fontFamily: '"Cormorant Garamond", Georgia, "Times New Roman", serif',
         }}>
           {poll.question}
         </p>
         {stage === 'voting' && (
           <p style={{ fontSize: 13, color: subColor, marginTop: 12 }}>
-            {tr(channel, 'vote.hint')}
+            One vote per person · changeable within 10 min
           </p>
         )}
       </div>
@@ -332,7 +314,7 @@ export default function PollPage() {
             const r = stage === 'results'
               ? planetR * (0.8 + (pct / 100) * 0.6)
               : planetR;
-            const parallaxK = stage === 'results' ? 8 : 0;
+            const parallaxK = 12;
             return (
               <button
                 key={choice}
@@ -348,7 +330,7 @@ export default function PollPage() {
                   border: 'none', padding: 0,
                   cursor: (stage === 'voting' || canChange) ? 'pointer' : 'default',
                   background: 'transparent',
-                  transform: parallaxK > 0 ? `translate3d(${mouse.x * parallaxK}px, ${mouse.y * parallaxK * 0.5}px, 0)` : undefined,
+                  transform: `translate3d(${mouse.x * parallaxK}px, ${mouse.y * parallaxK * 0.5}px, 0)`,
                   transition: 'width 0.8s ease, height 0.8s ease, left 0.8s ease, top 0.8s ease',
                   zIndex: 10,
                 }}
@@ -419,76 +401,58 @@ export default function PollPage() {
           style={{
             position: 'absolute', inset: 0, display: 'flex',
             alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 30,
-            background: day ? 'rgba(214,210,235,0.45)' : 'rgba(10,14,31,0.5)',
-            backdropFilter: 'blur(10px)',
+            background: day ? 'rgba(248,248,246,0.5)' : 'rgba(10,14,31,0.5)',
+            backdropFilter: 'blur(8px)',
           }}
         >
           <div style={{
-            background: day ? 'rgba(255,255,255,0.78)' : 'rgba(15,12,35,0.72)',
-            border: `1px solid ${borderColor}`,
-            borderRadius: 28, padding: '40px 36px', width: '100%',
-            maxWidth: 400, backdropFilter: 'blur(20px)',
+            background: cardBg, border: `1px solid ${borderColor}`,
+            borderRadius: 24, padding: '36px 32px', width: '100%',
+            maxWidth: 400, backdropFilter: 'blur(12px)',
           }}>
-            <p style={{
-              fontSize: 'clamp(24px, 4vw, 30px)', fontWeight: 700,
-              color: textColor, marginBottom: 8,
-              fontFamily: '"Cormorant Garamond", Georgia, serif', lineHeight: 1.1,
-            }}>
-              {tr(channel, 'demo.title')}
+            <p style={{ fontSize: 18, fontWeight: 700, color: textColor, marginBottom: 8 }}>
+              One quick thing
             </p>
-            <p style={{ fontSize: 14, color: subColor, marginBottom: 28, lineHeight: 1.6 }}>
-              {tr(channel, 'demo.sub')}
+            <p style={{ fontSize: 14, color: subColor, marginBottom: 28 }}>
+              Help us show how your group voted
             </p>
-            {demoError && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 16 }}>{demoError}</p>}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
+            {demoError && <p style={{ color: '#ef4444', fontSize: 14, marginBottom: 16 }}>{demoError}</p>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 24 }}>
               <input
                 type="number" value={age}
                 onChange={(e) => setAge(e.target.value)}
-                placeholder={tr(channel, 'demo.age.placeholder')} min={1} max={120}
+                placeholder="Your age" min={1} max={120}
                 style={{
                   width: '100%', border: `1px solid ${borderColor}`,
-                  borderRadius: 14, padding: '13px 16px', fontSize: 14,
-                  background: day ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.06)',
-                  color: textColor, outline: 'none', fontFamily: 'inherit',
-                  MozAppearance: 'textfield',
-                } as React.CSSProperties}
+                  borderRadius: 12, padding: '12px 16px', fontSize: 14,
+                  background: 'transparent', color: textColor, outline: 'none',
+                }}
               />
               <select
                 value={gender} onChange={(e) => setGender(e.target.value)}
                 style={{
                   width: '100%', border: `1px solid ${borderColor}`,
-                  borderRadius: 14, padding: '13px 16px', fontSize: 14,
-                  background: day ? 'rgba(255,255,255,0.8)' : 'rgba(20,15,45,0.9)',
-                  color: textColor, outline: 'none', fontFamily: 'inherit',
+                  borderRadius: 12, padding: '12px 16px', fontSize: 14,
+                  background: day ? '#fff' : '#1e1e1e', color: textColor, outline: 'none',
                 }}
               >
-                <option value="">{tr(channel, 'demo.gender')}</option>
-                <option value="male">{tr(channel, 'demo.gender.male')}</option>
-                <option value="female">{tr(channel, 'demo.gender.female')}</option>
-                <option value="prefer_not_to_say">{tr(channel, 'demo.gender.other')}</option>
+                <option value="">Select gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="prefer_not_to_say">Prefer not to say</option>
               </select>
             </div>
             <button
               onClick={handleDemoSubmit} disabled={demoSubmitting}
               style={{
-                width: '100%',
-                background: day ? '#2a1a5e' : '#f5f0e8',
-                color: day ? '#fff' : '#1a0e3a',
-                border: 'none', borderRadius: 100,
-                padding: '15px', fontSize: 15, fontWeight: 600,
-                cursor: demoSubmitting ? 'not-allowed' : 'pointer',
-                opacity: demoSubmitting ? 0.6 : 1,
-                fontFamily: 'inherit', transition: 'opacity 0.2s',
+                width: '100%', background: day ? '#111' : '#f0f0f0',
+                color: day ? '#fff' : '#111', border: 'none', borderRadius: 100,
+                padding: '14px', fontSize: 15, fontWeight: 600,
+                cursor: 'pointer', opacity: demoSubmitting ? 0.6 : 1,
               }}
             >
-              {demoSubmitting ? tr(channel, 'demo.submitting') : tr(channel, 'demo.submit')}
+              {demoSubmitting ? 'Loading...' : 'See results →'}
             </button>
-            <p style={{ fontSize: 11, color: subColor, textAlign: 'center', marginTop: 12, lineHeight: 1.6 }}>
-              {tr(channel, 'demo.consent')}{' '}
-              <a href="/privacy" target="_blank" style={{ color: textColor, fontWeight: 600, textDecoration: 'none' }}>
-                {tr(channel, 'demo.privacy')}
-              </a>
-            </p>
           </div>
         </div>
       )}
@@ -505,13 +469,11 @@ export default function PollPage() {
             padding: '20px 24px 32px', zIndex: 20,
           }}
         >
-          <p style={{ fontSize: 13, color: subColor }}>
-            {total === 1 ? tr(channel, 'vote.total').replace('{n}', String(total)) : tr(channel, 'vote.totals').replace('{n}', String(total))}
-          </p>
+          <p style={{ fontSize: 13, color: subColor }}>{voteWord(total)} total</p>
 
           {canChange && (
             <p style={{ fontSize: 12, color: subColor, marginTop: -8 }}>
-              {tr(channel, 'vote.change')}
+              Tap the other planet to change your vote
             </p>
           )}
 
@@ -565,70 +527,6 @@ export default function PollPage() {
             >
               Report
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Swap confirmation popup */}
-      {confirmChoice && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 200,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 24,
-          background: day ? 'rgba(214,210,235,0.5)' : 'rgba(10,14,31,0.6)',
-          backdropFilter: 'blur(10px)',
-        }}>
-          <div className="cosmos-fade-up" style={{
-            background: day ? 'rgba(255,255,255,0.85)' : 'rgba(15,12,35,0.85)',
-            border: `1px solid ${borderColor}`,
-            borderRadius: 28, padding: '36px 32px',
-            maxWidth: 380, width: '100%', textAlign: 'center',
-            backdropFilter: 'blur(20px)',
-          }}>
-            <p style={{
-              fontSize: 22, fontWeight: 700, color: textColor, marginBottom: 10,
-              fontFamily: '"Cormorant Garamond", Georgia, serif',
-            }}>
-              {tr(channel, 'swap.title')}
-            </p>
-            <p style={{ fontSize: 14, color: subColor, lineHeight: 1.7, marginBottom: 28 }}>
-              {(() => {
-                const body = tr(channel, 'swap.body')
-                const once = tr(channel, 'swap.once')
-                if (body.includes('{once}')) {
-                  const parts = body.split('{once}')
-                  return <>{parts[0]}<strong style={{ color: textColor }}>{once}</strong>{parts[1]}</>
-                }
-                return body
-              })()}
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button
-                onClick={confirmChangeVote}
-                disabled={submitting}
-                style={{
-                  width: '100%', border: 'none', borderRadius: 100,
-                  padding: '14px', fontSize: 15, fontWeight: 600,
-                  cursor: 'pointer',
-                  background: day ? '#2a1a5e' : '#f5f0e8',
-                  color: day ? '#fff' : '#1a0e3a',
-                  fontFamily: 'inherit',
-                }}
-              >
-                {tr(channel, 'swap.confirm')}
-              </button>
-              <button
-                onClick={() => setConfirmChoice(null)}
-                style={{
-                  width: '100%', border: 'none', borderRadius: 100,
-                  padding: '14px', fontSize: 15, fontWeight: 500,
-                  cursor: 'pointer', background: 'transparent',
-                  color: subColor, fontFamily: 'inherit',
-                }}
-              >
-                {tr(channel, 'swap.cancel')}
-              </button>
-            </div>
           </div>
         </div>
       )}

@@ -126,6 +126,13 @@ body.night {
  * `fadeIn`, `bubble*`, `vote-bubble*`, or `vote-row` rules.
  */
 
+/* ═══════ Planet float — per-planet amplitude via CSS vars ═══════ */
+
+@keyframes planetFloat {
+  0%, 100% { transform: translateY(calc(var(--amp, 10) * -1px)) scale(1); }
+  50%      { transform: translateY(calc(var(--amp, 10) * 1px)) scale(1.003); }
+}
+
 /* ═══════ Cosmos additions ═══════ */
 
 @keyframes cosmosCloudDrift {
@@ -179,4 +186,33 @@ body.night {
   border-radius: 100px;
   animation: cosmosShootingStar linear infinite;
   pointer-events: none;
+}
+
+/* ═══════ Wormhole click transition ═══════ */
+
+@keyframes wormholePlanet {
+  0%   { transform: scale(1);    opacity: 1; }
+  18%  { transform: scale(1.14); opacity: 1; }
+  55%  { transform: scale(0.68); opacity: 0.55; }
+  100% { transform: scale(0.1);  opacity: 0; }
+}
+
+@keyframes wormholeBloom {
+  0%   { transform: translate(-50%, -50%) scale(0);  opacity: 0.92; }
+  22%  { opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(60); opacity: 1; }
+}
+
+.planet-wormhole {
+  animation: wormholePlanet 0.68s cubic-bezier(0.55, 0, 0.45, 1) forwards !important;
+}
+
+.wormhole-bloom {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 300;
+  width: 120px;
+  height: 120px;
+  animation: wormholeBloom 0.68s cubic-bezier(0.4, 0, 1, 1) forwards;
 }

@@ -1,30 +1,35 @@
-// components/cosmos/useDayNight.ts
 'use client';
 
 import { useEffect, useState } from 'react';
 import { isDay } from '@/lib/theme';
 
-/**
- * Tracks day/night based on the user's clock. Re-checks every 60s so the
- * sky transitions automatically if the page is left open across the
- * threshold. Falls back to `true` (day) during SSR to avoid hydration
- * mismatch — the first effect tick corrects it.
- */
 export function useDayNight(): boolean {
   const [day, setDay] = useState(true);
 
   useEffect(() => {
-    const update = () => setDay(isDay());
+    const update = () => {
+      const override = localStorage.getItem('majority_day');
+      setDay(override !== null ? override === 'day' : isDay());
+    };
     update();
     const id = setInterval(update, 60_000);
-    return () => clearInterval(id);
+    // pick up changes from other pages / the toggle
+    window.addEventListener('majority-day-change', update);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('majority-day-change', update);
+    };
   }, []);
 
-  // Sync the existing body class so any legacy CSS (`/create`, `/dashboard`)
-  // keeps working unchanged.
   useEffect(() => {
     document.body.className = day ? 'day' : 'night';
   }, [day]);
 
   return day;
+}
+
+/** Call this from the toggle button — persists across all pages. */
+export function setDayNightOverride(day: boolean) {
+  localStorage.setItem('majority_day', day ? 'day' : 'night');
+  window.dispatchEvent(new Event('majority-day-change'));
 }
