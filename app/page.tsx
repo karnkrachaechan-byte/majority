@@ -2,12 +2,14 @@
 
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import FingerprintJS from '@fingerprintjs/fingerprintjs'
 import { supabase } from '@/lib/supabase'
 import { assignPalette } from '@/lib/theme'
 import { useDayNight, setDayNightOverride } from '@/components/cosmos/useDayNight'
 import { useViewport } from '@/components/cosmos/useOrbit'
 import { getChannel, CHANNELS } from '@/lib/channels'
 import { t } from '@/lib/i18n'
+import { DemographicRings } from '@/components/cosmos/DemographicRings'
 
 interface PollData {
   id: string
@@ -16,6 +18,42 @@ interface PollData {
   option_2: string
   voteCount: number
   totals: { a: number; b: number; total: number }
+  created_at: string
+}
+
+interface Breakdown {
+  gender: { male: { 1: number; 2: number }; female: { 1: number; 2: number }; prefer_not_to_say: { 1: number; 2: number } }
+  age: Record<string, { 1: number; 2: number }>
+}
+
+const AGE_GROUPS = [
+  { label: 'Under 18', min: 0, max: 17 },
+  { label: '18–24', min: 18, max: 24 },
+  { label: '25–34', min: 25, max: 34 },
+  { label: '35–44', min: 35, max: 44 },
+  { label: '45+', min: 45, max: 999 },
+]
+
+async function fetchBreakdown(pollId: string): Promise<Breakdown> {
+  const { data } = await supabase
+    .from('votes').select('choice, voter_gender, voter_age').eq('poll_id', pollId)
+  const gender: Breakdown['gender'] = {
+    male: { 1: 0, 2: 0 },
+    female: { 1: 0, 2: 0 },
+    prefer_not_to_say: { 1: 0, 2: 0 },
+  }
+  const age: Breakdown['age'] = {}
+  AGE_GROUPS.forEach(g => { age[g.label] = { 1: 0, 2: 0 } })
+  data?.forEach(v => {
+    const c = v.choice as 1 | 2
+    const g = v.voter_gender as keyof Breakdown['gender'] | null
+    if (g && gender[g]) gender[g][c]++
+    if (v.voter_age != null) {
+      const group = AGE_GROUPS.find(x => v.voter_age >= x.min && v.voter_age <= x.max)
+      if (group) age[group.label][c]++
+    }
+  })
+  return { gender, age }
 }
 
 type ModalPhase = 'expanding' | 'choosing' | 'demographic' | 'result'
@@ -27,6 +65,7 @@ interface ModalState {
   voted?: 1 | 2
   totals?: { a: number; b: number; total: number }
   voteId?: string
+  breakdown?: Breakdown
 }
 
 function formatVotes(n: number): string {
@@ -67,7 +106,14 @@ export default function Home() {
   const [demoSubmitting, setDemoSubmitting] = useState(false)
   const [channel, setChannel] = useState<string | null>(null)
   const [showChannelDropdown, setShowChannelDropdown] = useState(false)
+  const [fingerprint, setFingerprint] = useState('')
+  const [shareCopied, setShareCopied] = useState(false)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Load fingerprint on mount for duplicate vote prevention
+  useEffect(() => {
+    FingerprintJS.load().then(fp => fp.get()).then(r => setFingerprint(r.visitorId))
+  }, [])
 
   useEffect(() => {
     const saved = localStorage.getItem('majority_channel')
@@ -84,7 +130,7 @@ export default function Home() {
     async function fetchPolls() {
       let query = supabase
         .from('polls')
-        .select('id, question, option_1, option_2, expires_at')
+        .select('id, question, option_1, option_2, expires_at, created_at')
         .eq('is_active', true)
         .eq('is_archived', false)
         .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
@@ -261,8 +307,8 @@ export default function Home() {
 
   function startCountdown() {
     if (countdownRef.current) clearInterval(countdownRef.current)
-    setCountdown(15)
-    let remaining = 15
+    setCountdown(25)
+    let remaining = 25
     countdownRef.current = setInterval(() => {
       remaining--
       setCountdown(remaining)
@@ -281,6 +327,7 @@ export default function Home() {
 
   async function openModal(poll: PollData, colorA: string, colorB: string) {
     if (modal) return
+    setShareCopied(false)
     const stored = typeof window !== 'undefined' ? localStorage.getItem(`voted_${poll.id}`) : null
     if (stored) {
       // Verify the vote still exists in DB — admin may have deleted it
@@ -294,6 +341,10 @@ export default function Home() {
       } else {
         setModal({ poll, colorA, colorB, phase: 'result', voted: choice, totals: poll.totals })
         startCountdown()
+        // Lazy-load breakdown
+        fetchBreakdown(poll.id).then(breakdown => {
+          setModal(prev => prev ? { ...prev, breakdown } : null)
+        })
         return
       }
     }
@@ -301,26 +352,66 @@ export default function Home() {
     setTimeout(() => setModal(prev => prev ? { ...prev, phase: 'choosing' } : null), 750)
   }
 
+  async function handleShare() {
+    if (!modal) return
+    const url = `${window.location.origin}/?poll=${modal.poll.id}`
+    const text = modal.poll.question
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Majority', text, url })
+        return
+      } catch {
+        // User cancelled or share failed — fall back to clipboard
+      }
+    }
+    await navigator.clipboard.writeText(url)
+    setShareCopied(true)
+    setTimeout(() => setShareCopied(false), 2000)
+  }
+
   async function submitVote(choice: 1 | 2) {
     if (!modal || modal.phase !== 'choosing') return
+    if (!fingerprint) return
     const optimistic = {
       a: modal.poll.totals.a + (choice === 1 ? 1 : 0),
       b: modal.poll.totals.b + (choice === 2 ? 1 : 0),
       total: modal.poll.totals.total + 1,
     }
     const savedDemo = typeof window !== 'undefined' ? localStorage.getItem('majority_demo') : null
-    const { data: inserted } = await supabase
-      .from('votes').insert({ poll_id: modal.poll.id, choice }).select('id').single()
-    if (savedDemo && inserted?.id) {
-      const { age, gender } = JSON.parse(savedDemo)
-      await supabase.from('votes').update({ voter_age: age, voter_gender: gender }).eq('id', inserted.id)
-      // Mark voted only after full flow completes
+    const parsed = savedDemo ? JSON.parse(savedDemo) : null
+    const res = await fetch('/api/vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        poll_id: modal.poll.id,
+        choice,
+        fingerprint,
+        ...(parsed?.age ? { age: parsed.age } : {}),
+        ...(parsed?.gender ? { gender: parsed.gender } : {}),
+      }),
+    })
+    const result = await res.json()
+    if (!res.ok) {
+      // Already voted from another browser/device — show result anyway
+      if (result.error === 'Already voted') {
+        localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice }))
+        const breakdown = await fetchBreakdown(modal.poll.id)
+        setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: modal.poll.totals, breakdown } : null)
+        startCountdown()
+        return
+      }
+      setDemoError(result.error || 'Failed to vote')
+      return
+    }
+    if (parsed) {
+      // Demographics already known — go straight to result
       localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice }))
-      setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: optimistic } : null)
+      const breakdown = await fetchBreakdown(modal.poll.id)
+      setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: optimistic, breakdown } : null)
       startCountdown()
     } else {
       setDemoAge(''); setDemoGender(''); setDemoError('')
-      setModal(prev => prev ? { ...prev, phase: 'demographic', voted: choice, totals: optimistic, voteId: inserted?.id } : null)
+      setModal(prev => prev ? { ...prev, phase: 'demographic', voted: choice, totals: optimistic } : null)
     }
   }
 
@@ -332,11 +423,13 @@ export default function Home() {
     setDemoError(''); setDemoSubmitting(true)
     localStorage.setItem('majority_demo', JSON.stringify({ age: ageNum, gender: demoGender }))
     localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice: modal.voted }))
-    if (modal.voteId) {
-      await supabase.from('votes').update({ voter_age: ageNum, voter_gender: demoGender }).eq('id', modal.voteId)
-    }
-    // Use optimistic totals — home page will show real counts on next load
-    setModal(prev => prev ? { ...prev, phase: 'result' } : null)
+    await fetch('/api/update-demographic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ poll_id: modal.poll.id, fingerprint, age: ageNum, gender: demoGender }),
+    })
+    const breakdown = await fetchBreakdown(modal.poll.id)
+    setModal(prev => prev ? { ...prev, phase: 'result', breakdown } : null)
     setDemoSubmitting(false)
     startCountdown()
   }
@@ -560,6 +653,19 @@ export default function Home() {
                   zIndex: 5, pointerEvents: 'none',
                 }}
               >
+                {/* NEW badge — polls created within 24h */}
+                {poll.created_at && (Date.now() - new Date(poll.created_at).getTime()) < 86400000 && (
+                  <div style={{
+                    position: 'absolute', top: 8, right: 8, zIndex: 2,
+                    background: 'linear-gradient(135deg, #ff5252, #ff9100)',
+                    color: '#fff', fontSize: 10, fontWeight: 800,
+                    letterSpacing: '0.1em', padding: '4px 10px',
+                    borderRadius: 100, boxShadow: '0 4px 12px rgba(255,82,82,0.35)',
+                    pointerEvents: 'none',
+                  }}>
+                    NEW
+                  </div>
+                )}
                 {/* Inner button: CSS planetFloat handles the vertical bob */}
                 <button
                   onClick={() => openModal(poll, colorA, colorB)}
@@ -677,16 +783,20 @@ export default function Home() {
             style={{
               position: 'fixed', inset: 0, zIndex: 200,
               display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
+              alignItems: 'center', justifyContent: 'flex-start',
               background: 'rgba(0,0,0,0.68)',
               backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
               animation: 'cosmosFadeUp 0.3s ease forwards',
+              overflowY: 'auto', padding: '32px 16px',
             }}
             onClick={closeModal}
           >
             <div
               onClick={e => e.stopPropagation()}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                gap: 18, margin: 'auto', width: '100%', maxWidth: 480,
+              }}
             >
               {/* Phase: expanding — big planet with question */}
               {modal.phase === 'expanding' && (
@@ -923,9 +1033,60 @@ export default function Home() {
                   </div>
 
                   {modal.phase === 'result' && (
-                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, margin: 0, textAlign: 'center' }}>
-                      {totals.total.toLocaleString()} votes · closing in {countdown}s
-                    </p>
+                    <>
+                      {/* Demographic breakdown */}
+                      {modal.breakdown && totals.total > 0 && (
+                        <div style={{
+                          display: 'flex', flexDirection: 'column', gap: 12,
+                          maxHeight: vh * 0.32, overflowY: 'auto',
+                          width: '100%', maxWidth: 380,
+                        }}>
+                          <DemographicRings
+                            title="By gender"
+                            rows={[
+                              { label: 'Male', a: modal.breakdown.gender.male[1], b: modal.breakdown.gender.male[2] },
+                              { label: 'Female', a: modal.breakdown.gender.female[1], b: modal.breakdown.gender.female[2] },
+                              { label: 'Other', a: modal.breakdown.gender.prefer_not_to_say[1], b: modal.breakdown.gender.prefer_not_to_say[2] },
+                            ]}
+                            colorA={modal.colorA} colorB={modal.colorB}
+                            textColor="#fff" subColor="rgba(255,255,255,0.6)"
+                            cardBg="rgba(255,255,255,0.06)" borderColor="rgba(255,255,255,0.1)"
+                          />
+                          <DemographicRings
+                            title="By age"
+                            rows={AGE_GROUPS.map(g => ({
+                              label: g.label,
+                              a: modal.breakdown!.age[g.label][1],
+                              b: modal.breakdown!.age[g.label][2],
+                            }))}
+                            colorA={modal.colorA} colorB={modal.colorB}
+                            textColor="#fff" subColor="rgba(255,255,255,0.6)"
+                            cardBg="rgba(255,255,255,0.06)" borderColor="rgba(255,255,255,0.1)"
+                          />
+                        </div>
+                      )}
+
+                      {/* Share button */}
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        <button
+                          onClick={handleShare}
+                          style={{
+                            background: 'rgba(255,255,255,0.12)',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                            color: '#fff', fontSize: 13, fontWeight: 600,
+                            padding: '10px 22px', borderRadius: 100,
+                            cursor: 'pointer', backdropFilter: 'blur(10px)',
+                            transition: 'background 0.2s',
+                          }}
+                        >
+                          {shareCopied ? '✓ Link copied' : '↗ Share this poll'}
+                        </button>
+                      </div>
+
+                      <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, margin: 0, textAlign: 'center' }}>
+                        {totals.total.toLocaleString()} votes · closing in {countdown}s
+                      </p>
+                    </>
                   )}
                   {modal.phase === 'choosing' && (
                     <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, margin: 0 }}>
