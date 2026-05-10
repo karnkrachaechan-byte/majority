@@ -19,19 +19,6 @@ interface PollData {
   voteCount: number
   totals: { a: number; b: number; total: number }
   created_at: string
-  expires_at: string | null
-}
-
-function formatTimeLeft(expiresAt: string | null): string | null {
-  if (!expiresAt) return null
-  const ms = new Date(expiresAt).getTime() - Date.now()
-  if (ms <= 0) return null
-  const days = Math.floor(ms / 86400000)
-  if (days >= 2) return `${days}d left`
-  const hours = Math.floor(ms / 3600000)
-  if (hours >= 2) return `${hours}h left`
-  const minutes = Math.floor(ms / 60000)
-  return `${minutes}m left`
 }
 
 interface Breakdown {
@@ -166,10 +153,9 @@ export default function Home() {
     async function fetchPolls() {
       let query = supabase
         .from('polls')
-        .select('id, question, option_1, option_2, expires_at, created_at')
+        .select('id, question, option_1, option_2, created_at')
         .eq('is_active', true)
         .eq('is_archived', false)
-        .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
         .order('created_at', { ascending: false })
 
       if (channel !== 'global') {
@@ -409,15 +395,20 @@ export default function Home() {
     if (!modal || !modal.voted || modal.voted === newChoice) return
     const stored = localStorage.getItem(`voted_${modal.poll.id}`)
     if (!stored) return
-    const { ts } = JSON.parse(stored) as { ts: number }
-    if (Date.now() - ts > 10 * 60 * 1000) return
+    const parsed = JSON.parse(stored) as { ts: number; changed?: boolean }
+    if (parsed.changed) { alert('You\'ve already changed your vote once.'); return }
+    if (Date.now() - parsed.ts > 5 * 60 * 1000) { alert('Vote change window (5 min) has passed.'); return }
     const fp = await ensureFingerprint()
     const res = await fetch('/api/vote', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ poll_id: modal.poll.id, choice: newChoice, fingerprint: fp }),
     })
-    if (!res.ok) return
+    const result = await res.json()
+    if (!res.ok) {
+      alert(result.error || 'Failed to change vote')
+      return
+    }
     // Adjust totals
     const t = modal.totals ?? modal.poll.totals
     const adjusted = {
@@ -425,7 +416,7 @@ export default function Home() {
       b: t.b + (newChoice === 2 ? 1 : -1),
       total: t.total,
     }
-    localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice: newChoice, ts }))
+    localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice: newChoice, ts: parsed.ts, changed: true }))
     const breakdown = await fetchBreakdown(modal.poll.id)
     setModal(prev => prev ? { ...prev, voted: newChoice, totals: adjusted, breakdown } : null)
   }
@@ -777,22 +768,6 @@ export default function Home() {
                     NEW
                   </div>
                 )}
-                {/* Expiry countdown pill */}
-                {(() => {
-                  const left = formatTimeLeft(poll.expires_at)
-                  if (!left) return null
-                  return (
-                    <div style={{
-                      position: 'absolute', bottom: 8, left: 8, zIndex: 2,
-                      background: 'rgba(0,0,0,0.4)', color: 'rgba(255,255,255,0.9)',
-                      fontSize: 10, fontWeight: 600, padding: '3px 9px',
-                      borderRadius: 100, backdropFilter: 'blur(8px)',
-                      pointerEvents: 'none',
-                    }}>
-                      ⏱ {left}
-                    </div>
-                  )
-                })()}
                 {/* Inner button: CSS planetFloat handles the vertical bob */}
                 <button
                   onClick={() => openModal(poll, colorA, colorB)}
@@ -1209,27 +1184,28 @@ export default function Home() {
                         </div>
                       )}
 
-                      {/* Change vote hint — within 10 min window */}
+                      {/* Change vote — 5 min window, once only */}
                       {(() => {
                         const stored = typeof window !== 'undefined' ? localStorage.getItem(`voted_${modal.poll.id}`) : null
                         if (!stored) return null
-                        const parsed = JSON.parse(stored) as { ts?: number; choice: 1 | 2 }
-                        if (!parsed.ts) return null
+                        const parsed = JSON.parse(stored) as { ts?: number; choice: 1 | 2; changed?: boolean }
+                        if (!parsed.ts || parsed.changed) return null
                         const elapsed = Date.now() - parsed.ts
-                        if (elapsed > 10 * 60 * 1000) return null
+                        if (elapsed > 5 * 60 * 1000) return null
                         const otherChoice = (modal.voted === 1 ? 2 : 1) as 1 | 2
                         const otherLabel = otherChoice === 1 ? modal.poll.option_1 : modal.poll.option_2
+                        const minsLeft = Math.ceil((5 * 60 * 1000 - elapsed) / 60000)
                         return (
                           <button
                             onClick={() => changeVote(otherChoice)}
                             style={{
-                              background: 'none', border: '1px dashed rgba(255,255,255,0.25)',
-                              color: 'rgba(255,255,255,0.7)', fontSize: 12,
+                              background: 'none', border: '1px dashed rgba(255,255,255,0.3)',
+                              color: 'rgba(255,255,255,0.75)', fontSize: 12,
                               padding: '8px 16px', borderRadius: 100,
                               cursor: 'pointer', fontFamily: 'inherit',
                             }}
                           >
-                            ↻ Change to &ldquo;{otherLabel}&rdquo;
+                            ↻ Change to &ldquo;{otherLabel}&rdquo; · {minsLeft}m
                           </button>
                         )
                       })()}

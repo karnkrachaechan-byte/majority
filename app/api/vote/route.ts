@@ -32,12 +32,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Already voted' }, { status: 400 })
     }
 
+    // Allow vote change within 5 minutes
+    const can_change_until = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+
     const { error } = await supabaseAdmin.from('votes').insert({
       poll_id,
       choice,
       ip_address: ip,
       fingerprint,
       voter_country,
+      can_change_until,
       ...(age ? { voter_age: age } : {}),
       ...(gender ? { voter_gender: gender } : {}),
     })
@@ -77,8 +81,8 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'You have already changed your vote once.' }, { status: 400 })
     }
 
-    if (new Date() > new Date(existing.can_change_until)) {
-      return NextResponse.json({ error: 'Vote is locked — 10 minute window has passed' }, { status: 400 })
+    if (!existing.can_change_until || new Date() > new Date(existing.can_change_until)) {
+      return NextResponse.json({ error: 'Vote is locked — 5 minute window has passed' }, { status: 400 })
     }
 
     const { error } = await supabaseAdmin

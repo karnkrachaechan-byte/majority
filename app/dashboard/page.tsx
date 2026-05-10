@@ -69,7 +69,7 @@ function DashboardContent() {
   }, [emailParam, tokenParam])
 
   async function handleArchive(poll: Poll) {
-    if (poll.voteCount >= 1000) {
+    if (poll.voteCount >= 100) {
       // Request archive via email
       setArchiving(poll.id)
       await fetch('/api/request-archive', {
@@ -139,8 +139,8 @@ function DashboardContent() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {polls.map(poll => {
-                  const expired = poll.expires_at ? new Date() > new Date(poll.expires_at) : false
-                  const expiresDate = poll.expires_at ? new Date(poll.expires_at).toLocaleDateString() : '—'
+                  const expired = false
+                  const createdDate = poll.created_at ? new Date(poll.created_at).toLocaleDateString() : '—'
                   return (
                     <div key={poll.id} style={{
                       background: itemBg, border: `1px solid ${borderColor}`,
@@ -162,7 +162,7 @@ function DashboardContent() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
                         <div style={{ display: 'flex', gap: 16 }}>
                           <span style={{ fontSize: 13, color: subColor }}>{poll.voteCount} {poll.voteCount === 1 ? 'vote' : 'votes'}</span>
-                          <span style={{ fontSize: 13, color: subColor }}>Expires {expiresDate}</span>
+                          <span style={{ fontSize: 13, color: subColor }}>Created {createdDate}</span>
                         </div>
                         <div style={{ display: 'flex', gap: 10 }}>
                           {poll.is_active && (
@@ -180,16 +180,16 @@ function DashboardContent() {
                               disabled={archiving === poll.id}
                               style={{
                                 background: 'none',
-                                border: `1px solid ${poll.voteCount >= 1000 ? 'rgba(99,102,241,0.4)' : 'rgba(239,68,68,0.3)'}`,
+                                border: `1px solid ${poll.voteCount >= 100 ? 'rgba(99,102,241,0.4)' : 'rgba(239,68,68,0.3)'}`,
                                 borderRadius: 100, padding: '6px 16px',
                                 fontSize: 13,
-                                color: poll.voteCount >= 1000 ? '#6366f1' : '#ef4444',
+                                color: poll.voteCount >= 100 ? '#6366f1' : '#ef4444',
                                 cursor: 'pointer',
                                 opacity: archiving === poll.id ? 0.5 : 1,
                                 fontFamily: 'inherit',
                               }}
                             >
-                              {poll.voteCount >= 1000 ? 'Request Archive' : 'Archive'}
+                              {poll.voteCount >= 100 ? 'Request Archive' : 'Archive'}
                             </button>
                           )}
                         </div>
