@@ -300,10 +300,21 @@ export default function Home() {
       total: modal.poll.totals.total + 1,
     }
     localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice }))
+    const savedDemo = typeof window !== 'undefined' ? localStorage.getItem('majority_demo') : null
     const { data: inserted } = await supabase
       .from('votes').insert({ poll_id: modal.poll.id, choice }).select('id').single()
-    setDemoAge(''); setDemoGender(''); setDemoError('')
-    setModal(prev => prev ? { ...prev, phase: 'demographic', voted: choice, totals: optimistic, voteId: inserted?.id } : null)
+    if (savedDemo && inserted?.id) {
+      const { age, gender } = JSON.parse(savedDemo)
+      await supabase.from('votes').update({ voter_age: age, voter_gender: gender }).eq('id', inserted.id)
+      const { data } = await supabase.from('votes').select('choice').eq('poll_id', modal.poll.id)
+      const t = { a: 0, b: 0, total: 0 }
+      data?.forEach(v => { if (v.choice === 1) t.a++; else if (v.choice === 2) t.b++; t.total++ })
+      setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: t } : null)
+      startCountdown()
+    } else {
+      setDemoAge(''); setDemoGender(''); setDemoError('')
+      setModal(prev => prev ? { ...prev, phase: 'demographic', voted: choice, totals: optimistic, voteId: inserted?.id } : null)
+    }
   }
 
   async function submitDemographic() {
@@ -312,6 +323,7 @@ export default function Home() {
     if (!demoGender) { setDemoError('Please select your gender.'); return }
     if (!modal) return
     setDemoError(''); setDemoSubmitting(true)
+    localStorage.setItem('majority_demo', JSON.stringify({ age: ageNum, gender: demoGender }))
     if (modal.voteId) {
       await supabase.from('votes').update({ voter_age: ageNum, voter_gender: demoGender }).eq('id', modal.voteId)
     }
