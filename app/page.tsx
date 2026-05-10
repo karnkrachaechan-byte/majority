@@ -18,7 +18,7 @@ interface PollData {
   totals: { a: number; b: number; total: number }
 }
 
-type ModalPhase = 'expanding' | 'choosing' | 'result'
+type ModalPhase = 'expanding' | 'choosing' | 'demographic' | 'result'
 interface ModalState {
   poll: PollData
   colorA: string
@@ -26,6 +26,7 @@ interface ModalState {
   phase: ModalPhase
   voted?: 1 | 2
   totals?: { a: number; b: number; total: number }
+  voteId?: string
 }
 
 function formatVotes(n: number): string {
@@ -60,6 +61,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<ModalState | null>(null)
   const [countdown, setCountdown] = useState(0)
+  const [demoAge, setDemoAge] = useState('')
+  const [demoGender, setDemoGender] = useState('')
+  const [demoError, setDemoError] = useState('')
+  const [demoSubmitting, setDemoSubmitting] = useState(false)
   const [channel, setChannel] = useState<string | null>(null)
   const [showChannelDropdown, setShowChannelDropdown] = useState(false)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -294,16 +299,32 @@ export default function Home() {
       b: modal.poll.totals.b + (choice === 2 ? 1 : 0),
       total: modal.poll.totals.total + 1,
     }
-    setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: optimistic } : null)
-    startCountdown()
     localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice }))
-    await supabase.from('votes').insert({ poll_id: modal.poll.id, choice })
+    const { data: inserted } = await supabase
+      .from('votes').insert({ poll_id: modal.poll.id, choice }).select('id').single()
+    setDemoAge(''); setDemoGender(''); setDemoError('')
+    setModal(prev => prev ? { ...prev, phase: 'demographic', voted: choice, totals: optimistic, voteId: inserted?.id } : null)
+  }
+
+  async function submitDemographic() {
+    const ageNum = parseInt(demoAge)
+    if (!demoAge || ageNum < 1 || ageNum > 120) { setDemoError('Please enter a valid age.'); return }
+    if (!demoGender) { setDemoError('Please select your gender.'); return }
+    if (!modal) return
+    setDemoError(''); setDemoSubmitting(true)
+    if (modal.voteId) {
+      await supabase.from('votes').update({ voter_age: ageNum, voter_gender: demoGender }).eq('id', modal.voteId)
+    }
     const { data } = await supabase.from('votes').select('choice').eq('poll_id', modal.poll.id)
     if (data) {
       const t = { a: 0, b: 0, total: 0 }
       data.forEach(v => { if (v.choice === 1) t.a++; else if (v.choice === 2) t.b++; t.total++ })
-      setModal(prev => prev ? { ...prev, totals: t } : null)
+      setModal(prev => prev ? { ...prev, phase: 'result', totals: t } : null)
+    } else {
+      setModal(prev => prev ? { ...prev, phase: 'result' } : null)
     }
+    setDemoSubmitting(false)
+    startCountdown()
   }
 
   const serif = '"Cormorant Garamond", Georgia, "Times New Roman", serif'
@@ -655,6 +676,78 @@ export default function Home() {
                   }}>
                     {modal.poll.question}
                   </span>
+                </div>
+              )}
+
+              {/* Phase: demographic form */}
+              {modal.phase === 'demographic' && (
+                <div style={{
+                  background: day ? 'rgba(255,255,255,0.92)' : 'rgba(20,20,35,0.92)',
+                  border: `1px solid ${day ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'}`,
+                  borderRadius: 24, padding: '32px 28px',
+                  width: Math.min(vw * 0.88, 380),
+                  backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+                  animation: 'cosmosFadeUp 0.35s ease forwards',
+                }}>
+                  <p style={{ fontSize: 17, fontWeight: 700, color: day ? '#1a1a2e' : '#f0f0f8', margin: '0 0 6px' }}>
+                    One quick thing
+                  </p>
+                  <p style={{ fontSize: 13, color: day ? '#7a6a9e' : '#b0a8cc', margin: '0 0 24px' }}>
+                    Help us show how different groups voted
+                  </p>
+                  {demoError && <p style={{ color: '#ef4444', fontSize: 13, margin: '0 0 14px' }}>{demoError}</p>}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+                    <input
+                      type="number" value={demoAge}
+                      onChange={e => setDemoAge(e.target.value)}
+                      placeholder="Your age" min={1} max={120}
+                      style={{
+                        width: '100%', padding: '12px 16px', fontSize: 14, borderRadius: 12,
+                        border: `1px solid ${day ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
+                        background: day ? '#fff' : 'rgba(255,255,255,0.07)',
+                        color: day ? '#1a1a2e' : '#f0f0f8', outline: 'none',
+                      }}
+                    />
+                    <select
+                      value={demoGender} onChange={e => setDemoGender(e.target.value)}
+                      style={{
+                        width: '100%', padding: '12px 16px', fontSize: 14, borderRadius: 12,
+                        border: `1px solid ${day ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
+                        background: day ? '#fff' : 'rgba(30,30,50,0.9)',
+                        color: day ? '#1a1a2e' : '#f0f0f8', outline: 'none',
+                      }}
+                    >
+                      <option value="">Select gender</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="prefer_not_to_say">Prefer not to say</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button
+                      onClick={submitDemographic} disabled={demoSubmitting}
+                      style={{
+                        flex: 1, padding: '13px', borderRadius: 100, border: 'none',
+                        background: day ? '#1a1a2e' : '#f0f0f8',
+                        color: day ? '#fff' : '#1a1a2e',
+                        fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                        opacity: demoSubmitting ? 0.6 : 1,
+                      }}
+                    >
+                      {demoSubmitting ? 'Loading…' : 'See results →'}
+                    </button>
+                    <button
+                      onClick={() => { setModal(prev => prev ? { ...prev, phase: 'result' } : null); startCountdown() }}
+                      style={{
+                        padding: '13px 18px', borderRadius: 100, border: 'none',
+                        background: 'transparent',
+                        color: day ? '#7a6a9e' : '#b0a8cc',
+                        fontSize: 13, cursor: 'pointer',
+                      }}
+                    >
+                      Skip
+                    </button>
+                  </div>
                 </div>
               )}
 
