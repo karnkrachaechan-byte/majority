@@ -165,6 +165,22 @@ export default function Home() {
     fetchPolls()
   }, [channel])
 
+  // Auto-open poll modal when arriving via shared URL ?poll=ID
+  useEffect(() => {
+    if (polls.length === 0 || modal) return
+    const params = new URLSearchParams(window.location.search)
+    const pollIdFromUrl = params.get('poll')
+    if (!pollIdFromUrl) return
+    const poll = polls.find(p => p.id === pollIdFromUrl)
+    if (!poll) return
+    const { colorA, colorB } = assignPalette(poll.id)
+    openModal(poll, colorA, colorB)
+    // Strip the query so refresh doesn't re-open
+    window.history.replaceState({}, '', window.location.pathname)
+    // openModal is stable enough — disable lint warning
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [polls])
+
   const planets = useMemo(() => {
     const n = polls.length
     if (n === 0) return []
@@ -355,18 +371,19 @@ export default function Home() {
   async function handleShare() {
     if (!modal) return
     const url = `${window.location.origin}/?poll=${modal.poll.id}`
-    const text = modal.poll.question
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: 'Majority', text, url })
-        return
-      } catch {
-        // User cancelled or share failed — fall back to clipboard
-      }
+    try {
+      await navigator.clipboard.writeText(url)
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2500)
+    } catch {
+      // Fallback: select text in a temp input
+      const ta = document.createElement('textarea')
+      ta.value = url; document.body.appendChild(ta)
+      ta.select(); document.execCommand('copy')
+      document.body.removeChild(ta)
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2500)
     }
-    await navigator.clipboard.writeText(url)
-    setShareCopied(true)
-    setTimeout(() => setShareCopied(false), 2000)
   }
 
   async function submitVote(choice: 1 | 2) {
@@ -791,6 +808,22 @@ export default function Home() {
             }}
             onClick={closeModal}
           >
+            {/* Close (X) button — top right */}
+            <button
+              onClick={closeModal}
+              aria-label="Close"
+              style={{
+                position: 'fixed', top: 18, right: 18, zIndex: 210,
+                width: 40, height: 40, borderRadius: '50%',
+                background: 'rgba(255,255,255,0.12)',
+                border: '1px solid rgba(255,255,255,0.18)',
+                color: '#fff', fontSize: 20, lineHeight: 1, cursor: 'pointer',
+                backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              ×
+            </button>
             <div
               onClick={e => e.stopPropagation()}
               style={{
