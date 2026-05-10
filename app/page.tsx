@@ -115,6 +115,17 @@ export default function Home() {
     FingerprintJS.load().then(fp => fp.get()).then(r => setFingerprint(r.visitorId))
   }, [])
 
+  // First-visit hint
+  const [showHint, setShowHint] = useState(false)
+  useEffect(() => {
+    const seen = typeof window !== 'undefined' ? localStorage.getItem('majority_seen_hint') : '1'
+    if (!seen) setShowHint(true)
+  }, [])
+  function dismissHint() {
+    setShowHint(false)
+    localStorage.setItem('majority_seen_hint', '1')
+  }
+
   useEffect(() => {
     const saved = localStorage.getItem('majority_channel')
     setChannel(saved || 'global')
@@ -344,6 +355,7 @@ export default function Home() {
   async function openModal(poll: PollData, colorA: string, colorB: string) {
     if (modal) return
     setShareCopied(false)
+    if (showHint) dismissHint()
     const stored = typeof window !== 'undefined' ? localStorage.getItem(`voted_${poll.id}`) : null
     if (stored) {
       // Verify the vote still exists in DB — admin may have deleted it
@@ -370,7 +382,7 @@ export default function Home() {
 
   async function handleShare() {
     if (!modal) return
-    const url = `${window.location.origin}/?poll=${modal.poll.id}`
+    const url = `${window.location.origin}/p/${modal.poll.id}`
     try {
       await navigator.clipboard.writeText(url)
       setShareCopied(true)
@@ -641,15 +653,45 @@ export default function Home() {
       )}
 
       {loading && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: subColor, fontSize: 15 }}>
-          Loading...
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: 10, color: subColor, fontSize: 14,
+        }}>
+          <span style={{
+            width: 10, height: 10, borderRadius: '50%',
+            background: subColor, opacity: 0.6,
+            animation: 'cosmosTwinkle 1.2s ease-in-out infinite',
+          }} />
+          Aligning the planets…
         </div>
       )}
 
       {!loading && polls.length === 0 && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: subColor, fontSize: 15, gap: 8 }}>
-          <p style={{ margin: 0 }}>No polls yet.</p>
-          <p style={{ margin: 0, fontSize: 13 }}>Be the first to create one!</p>
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: 14, padding: '0 24px', textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 56, opacity: 0.6 }}>🌌</div>
+          <p style={{ margin: 0, color: textColor, fontSize: 22, fontWeight: 600, fontFamily: serif }}>
+            The cosmos is empty
+          </p>
+          <p style={{ margin: 0, color: subColor, fontSize: 14, maxWidth: 280, lineHeight: 1.55 }}>
+            No polls in this channel yet. Be the first to ask the world something.
+          </p>
+          <button onClick={() => router.push('/create')} style={{
+            marginTop: 4,
+            background: day ? '#2a1a5e' : '#f5f0e8',
+            color: day ? '#fff' : '#1a0e3a',
+            border: 'none', borderRadius: 100,
+            padding: '12px 28px', fontSize: 14, fontWeight: 700,
+            cursor: 'pointer', fontFamily: 'inherit',
+            boxShadow: day ? '0 8px 24px rgba(42,26,94,0.25)' : '0 8px 24px rgba(0,0,0,0.4)',
+          }}>
+            + Ask the world
+          </button>
         </div>
       )}
 
@@ -1119,6 +1161,25 @@ export default function Home() {
                       <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, margin: 0, textAlign: 'center' }}>
                         {totals.total.toLocaleString()} votes · closing in {countdown}s
                       </p>
+                      <button
+                        onClick={async () => {
+                          if (!confirm('Report this poll for review?')) return
+                          await fetch('/api/report', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ poll_id: modal.poll.id }),
+                          })
+                          alert('Thanks — we\'ll review it.')
+                        }}
+                        style={{
+                          background: 'none', border: 'none',
+                          color: 'rgba(255,255,255,0.35)', fontSize: 11,
+                          cursor: 'pointer', textDecoration: 'underline',
+                          padding: 0, marginTop: -4,
+                        }}
+                      >
+                        Report poll
+                      </button>
                     </>
                   )}
                   {modal.phase === 'choosing' && (
@@ -1132,6 +1193,30 @@ export default function Home() {
           </div>
         )
       })()}
+
+      {/* First-visit hint */}
+      {showHint && !loading && polls.length > 0 && !modal && (
+        <div
+          onClick={dismissHint}
+          style={{
+            position: 'fixed', bottom: 70, left: '50%',
+            transform: 'translateX(-50%)', zIndex: 90,
+            background: day ? 'rgba(42,26,94,0.92)' : 'rgba(245,240,232,0.92)',
+            color: day ? '#fff' : '#1a0e3a',
+            padding: '10px 18px', borderRadius: 100,
+            fontSize: 13, fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 8,
+            backdropFilter: 'blur(12px)', cursor: 'pointer',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.25)',
+            animation: 'cosmosFadeUp 0.5s ease forwards',
+            maxWidth: 'calc(100vw - 32px)',
+          }}
+        >
+          <span style={{ fontSize: 16 }}>👆</span>
+          Tap a planet to vote
+          <span style={{ opacity: 0.6, marginLeft: 4 }}>×</span>
+        </div>
+      )}
 
       {/* Bottom stats bar */}
       {!loading && (
