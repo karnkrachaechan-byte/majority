@@ -18,6 +18,16 @@ interface PollData {
   totals: { a: number; b: number; total: number }
 }
 
+type ModalPhase = 'expanding' | 'choosing' | 'result'
+interface ModalState {
+  poll: PollData
+  colorA: string
+  colorB: string
+  phase: ModalPhase
+  voted?: 1 | 2
+  totals?: { a: number; b: number; total: number }
+}
+
 function formatVotes(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
@@ -48,10 +58,11 @@ export default function Home() {
   const { w: vw, h: vh } = useViewport()
   const [polls, setPolls] = useState<PollData[]>([])
   const [loading, setLoading] = useState(true)
-  const [zoomingId, setZoomingId] = useState<string | null>(null)
-  const [wormhole, setWormhole] = useState<{ x: number; y: number; colorA: string; colorB: string } | null>(null)
+  const [modal, setModal] = useState<ModalState | null>(null)
+  const [countdown, setCountdown] = useState(0)
   const [channel, setChannel] = useState<string | null>(null)
   const [showChannelDropdown, setShowChannelDropdown] = useState(false)
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     const saved = localStorage.getItem('majority_channel')
@@ -243,12 +254,56 @@ export default function Home() {
   const totalVotes = polls.reduce((s, p) => s + p.voteCount, 0)
   const ch = channel || 'global'
 
-  function handleClick(id: string, idx: number, colorA: string, colorB: string) {
-    if (zoomingId) return
-    const pos = physicsRef.current[idx]
-    if (pos) setWormhole({ x: pos.x, y: pos.y, colorA, colorB })
-    setZoomingId(id)
-    setTimeout(() => router.push(`/poll/${id}`), 700)
+  function startCountdown() {
+    if (countdownRef.current) clearInterval(countdownRef.current)
+    setCountdown(15)
+    let remaining = 15
+    countdownRef.current = setInterval(() => {
+      remaining--
+      setCountdown(remaining)
+      if (remaining <= 0) {
+        clearInterval(countdownRef.current!)
+        countdownRef.current = null
+        setModal(null)
+      }
+    }, 1000)
+  }
+
+  function closeModal() {
+    if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+    setModal(null)
+  }
+
+  function openModal(poll: PollData, colorA: string, colorB: string) {
+    if (modal) return
+    const stored = typeof window !== 'undefined' ? localStorage.getItem(`voted_${poll.id}`) : null
+    if (stored) {
+      const { choice } = JSON.parse(stored) as { choice: 1 | 2 }
+      setModal({ poll, colorA, colorB, phase: 'result', voted: choice, totals: poll.totals })
+      startCountdown()
+      return
+    }
+    setModal({ poll, colorA, colorB, phase: 'expanding' })
+    setTimeout(() => setModal(prev => prev ? { ...prev, phase: 'choosing' } : null), 750)
+  }
+
+  async function submitVote(choice: 1 | 2) {
+    if (!modal || modal.phase !== 'choosing') return
+    const optimistic = {
+      a: modal.poll.totals.a + (choice === 1 ? 1 : 0),
+      b: modal.poll.totals.b + (choice === 2 ? 1 : 0),
+      total: modal.poll.totals.total + 1,
+    }
+    setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: optimistic } : null)
+    startCountdown()
+    localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice }))
+    await supabase.from('votes').insert({ poll_id: modal.poll.id, choice })
+    const { data } = await supabase.from('votes').select('choice').eq('poll_id', modal.poll.id)
+    if (data) {
+      const t = { a: 0, b: 0, total: 0 }
+      data.forEach(v => { if (v.choice === 1) t.a++; else if (v.choice === 2) t.b++; t.total++ })
+      setModal(prev => prev ? { ...prev, totals: t } : null)
+    }
   }
 
   const serif = '"Cormorant Garamond", Georgia, "Times New Roman", serif'
@@ -467,15 +522,13 @@ export default function Home() {
                 style={{
                   position: 'absolute', left: 0, top: 0,
                   width: r * 2, height: r * 2,
-                  zIndex: zoomingId === poll.id ? 50 : 5,
-                  pointerEvents: 'none',
+                  zIndex: 5, pointerEvents: 'none',
                 }}
               >
                 {/* Inner button: CSS planetFloat handles the vertical bob */}
                 <button
-                  onClick={() => handleClick(poll.id, idx, colorA, colorB)}
+                  onClick={() => openModal(poll, colorA, colorB)}
                   aria-label={poll.question}
-                  className={zoomingId === poll.id ? 'planet-wormhole' : ''}
                   style={{
                     position: 'absolute', inset: 0,
                     borderRadius: '50%', border: 'none', cursor: 'pointer',
@@ -485,7 +538,7 @@ export default function Home() {
                     alignItems: 'center', justifyContent: 'center',
                     textAlign: 'center', padding: 14,
                     ['--amp' as string]: String(amp),
-                    animation: zoomingId === poll.id ? undefined : `planetFloat ${floatDur}s ease-in-out ${floatDelay}s infinite`,
+                    animation: `planetFloat ${floatDur}s ease-in-out ${floatDelay}s infinite`,
                     transition: 'box-shadow 0.3s ease',
                     pointerEvents: 'auto',
                   }}
@@ -562,17 +615,159 @@ export default function Home() {
         </div>
       )}
 
-      {/* Wormhole bloom overlay */}
-      {wormhole && (
-        <div
-          className="wormhole-bloom"
-          style={{
-            left: wormhole.x,
-            top: wormhole.y,
-            background: `radial-gradient(circle at center, rgba(255,255,255,0.92) 0%, ${wormhole.colorA} 45%, ${wormhole.colorB} 100%)`,
-          }}
-        />
-      )}
+      {/* Poll Modal */}
+      {modal && (() => {
+        const size = Math.min(vw * 0.78, vh * 0.52, 460)
+        const totals = modal.totals ?? modal.poll.totals
+        const pctA = totals.total > 0 ? Math.round(totals.a / totals.total * 100) : 50
+        const pctB = totals.total > 0 ? 100 - pctA : 50
+        const mid = mixHex(modal.colorA, modal.colorB)
+        return (
+          <div
+            style={{
+              position: 'fixed', inset: 0, zIndex: 200,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.68)',
+              backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+              animation: 'cosmosFadeUp 0.3s ease forwards',
+            }}
+            onClick={closeModal}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}
+            >
+              {/* Phase: expanding — big planet with question */}
+              {modal.phase === 'expanding' && (
+                <div style={{
+                  width: size, height: size, borderRadius: '50%',
+                  background: `radial-gradient(circle at 35% 32%, ${modal.colorA} 0%, ${mid} 52%, ${modal.colorB} 100%)`,
+                  boxShadow: `0 24px 80px ${modal.colorA}88, 0 8px 32px ${modal.colorB}55`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: 32, textAlign: 'center',
+                  animation: 'cosmosFadeUp 0.4s cubic-bezier(0.2,0.8,0.2,1) forwards',
+                }}>
+                  <span style={{
+                    color: '#fff', fontSize: size > 350 ? 22 : 18,
+                    fontWeight: 700, lineHeight: 1.4,
+                    textShadow: '0 2px 12px rgba(0,0,0,0.3)',
+                  }}>
+                    {modal.poll.question}
+                  </span>
+                </div>
+              )}
+
+              {/* Phase: choosing / result — split circle */}
+              {(modal.phase === 'choosing' || modal.phase === 'result') && (
+                <>
+                  <p style={{
+                    color: '#fff', fontSize: size > 350 ? 18 : 15, fontWeight: 600,
+                    textAlign: 'center', maxWidth: size, margin: 0,
+                    textShadow: '0 2px 12px rgba(0,0,0,0.5)', lineHeight: 1.4,
+                  }}>
+                    {modal.poll.question}
+                  </p>
+
+                  <div style={{
+                    width: size, height: size, borderRadius: '50%',
+                    overflow: 'hidden', display: 'flex', position: 'relative',
+                    boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+                    animation: modal.phase === 'choosing' ? 'cosmosFadeUp 0.4s cubic-bezier(0.2,0.8,0.2,1) forwards' : undefined,
+                  }}>
+                    {/* Option A */}
+                    <button
+                      disabled={modal.phase === 'result'}
+                      onClick={() => submitVote(1)}
+                      style={{
+                        width: modal.phase === 'result' ? `${pctA}%` : '50%',
+                        minWidth: '15%', height: '100%', border: 'none',
+                        background: `linear-gradient(160deg, ${modal.colorA}, ${mid})`,
+                        cursor: modal.phase === 'choosing' ? 'pointer' : 'default',
+                        display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center',
+                        padding: '0 12px', textAlign: 'center',
+                        transition: 'width 1s cubic-bezier(0.4,0,0.2,1)',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {modal.phase === 'result' && (
+                        <span style={{ color: '#fff', fontSize: size > 350 ? 34 : 26, fontWeight: 900, lineHeight: 1 }}>
+                          {pctA}%
+                        </span>
+                      )}
+                      <span style={{
+                        color: '#fff', fontSize: size > 350 ? 14 : 12, fontWeight: 600,
+                        lineHeight: 1.3, marginTop: modal.phase === 'result' ? 6 : 0,
+                        textShadow: '0 1px 8px rgba(0,0,0,0.4)',
+                      }}>
+                        {modal.poll.option_1}
+                      </span>
+                      {modal.phase === 'result' && modal.voted === 1 && (
+                        <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10, marginTop: 5 }}>✓ your vote</span>
+                      )}
+                    </button>
+
+                    {/* Divider */}
+                    <div style={{
+                      position: 'absolute',
+                      left: modal.phase === 'result' ? `${pctA}%` : '50%',
+                      top: '8%', bottom: '8%', width: 2,
+                      background: 'rgba(255,255,255,0.45)',
+                      transform: 'translateX(-50%)', zIndex: 1,
+                      transition: 'left 1s cubic-bezier(0.4,0,0.2,1)',
+                    }} />
+
+                    {/* Option B */}
+                    <button
+                      disabled={modal.phase === 'result'}
+                      onClick={() => submitVote(2)}
+                      style={{
+                        width: modal.phase === 'result' ? `${pctB}%` : '50%',
+                        minWidth: '15%', height: '100%', border: 'none',
+                        background: `linear-gradient(160deg, ${mid}, ${modal.colorB})`,
+                        cursor: modal.phase === 'choosing' ? 'pointer' : 'default',
+                        display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center',
+                        padding: '0 12px', textAlign: 'center',
+                        transition: 'width 1s cubic-bezier(0.4,0,0.2,1)',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {modal.phase === 'result' && (
+                        <span style={{ color: '#fff', fontSize: size > 350 ? 34 : 26, fontWeight: 900, lineHeight: 1 }}>
+                          {pctB}%
+                        </span>
+                      )}
+                      <span style={{
+                        color: '#fff', fontSize: size > 350 ? 14 : 12, fontWeight: 600,
+                        lineHeight: 1.3, marginTop: modal.phase === 'result' ? 6 : 0,
+                        textShadow: '0 1px 8px rgba(0,0,0,0.4)',
+                      }}>
+                        {modal.poll.option_2}
+                      </span>
+                      {modal.phase === 'result' && modal.voted === 2 && (
+                        <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10, marginTop: 5 }}>✓ your vote</span>
+                      )}
+                    </button>
+                  </div>
+
+                  {modal.phase === 'result' && (
+                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, margin: 0, textAlign: 'center' }}>
+                      {totals.total.toLocaleString()} votes · closing in {countdown}s
+                    </p>
+                  )}
+                  {modal.phase === 'choosing' && (
+                    <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, margin: 0 }}>
+                      tap a side to vote
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Bottom stats bar */}
       {!loading && (
