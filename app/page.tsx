@@ -19,6 +19,19 @@ interface PollData {
   voteCount: number
   totals: { a: number; b: number; total: number }
   created_at: string
+  expires_at: string | null
+}
+
+function formatTimeLeft(expiresAt: string | null): string | null {
+  if (!expiresAt) return null
+  const ms = new Date(expiresAt).getTime() - Date.now()
+  if (ms <= 0) return null
+  const days = Math.floor(ms / 86400000)
+  if (days >= 2) return `${days}d left`
+  const hours = Math.floor(ms / 3600000)
+  if (hours >= 2) return `${hours}h left`
+  const minutes = Math.floor(ms / 60000)
+  return `${minutes}m left`
 }
 
 interface Breakdown {
@@ -110,10 +123,22 @@ export default function Home() {
   const [shareCopied, setShareCopied] = useState(false)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Load fingerprint on mount for duplicate vote prevention
-  useEffect(() => {
-    FingerprintJS.load().then(fp => fp.get()).then(r => setFingerprint(r.visitorId))
-  }, [])
+  // Lazy-load fingerprint — only when user is about to vote (saves ~50KB on initial load)
+  const fingerprintLoading = useRef(false)
+  async function ensureFingerprint(): Promise<string> {
+    if (fingerprint) return fingerprint
+    if (fingerprintLoading.current) {
+      // Already loading — wait briefly then read state
+      await new Promise(r => setTimeout(r, 200))
+      return fingerprint
+    }
+    fingerprintLoading.current = true
+    const fp = await FingerprintJS.load()
+    const r = await fp.get()
+    setFingerprint(r.visitorId)
+    fingerprintLoading.current = false
+    return r.visitorId
+  }
 
   // First-visit hint
   const [showHint, setShowHint] = useState(false)
@@ -380,6 +405,31 @@ export default function Home() {
     setTimeout(() => setModal(prev => prev ? { ...prev, phase: 'choosing' } : null), 750)
   }
 
+  async function changeVote(newChoice: 1 | 2) {
+    if (!modal || !modal.voted || modal.voted === newChoice) return
+    const stored = localStorage.getItem(`voted_${modal.poll.id}`)
+    if (!stored) return
+    const { ts } = JSON.parse(stored) as { ts: number }
+    if (Date.now() - ts > 10 * 60 * 1000) return
+    const fp = await ensureFingerprint()
+    const res = await fetch('/api/vote', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ poll_id: modal.poll.id, choice: newChoice, fingerprint: fp }),
+    })
+    if (!res.ok) return
+    // Adjust totals
+    const t = modal.totals ?? modal.poll.totals
+    const adjusted = {
+      a: t.a + (newChoice === 1 ? 1 : -1),
+      b: t.b + (newChoice === 2 ? 1 : -1),
+      total: t.total,
+    }
+    localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice: newChoice, ts }))
+    const breakdown = await fetchBreakdown(modal.poll.id)
+    setModal(prev => prev ? { ...prev, voted: newChoice, totals: adjusted, breakdown } : null)
+  }
+
   async function handleShare() {
     if (!modal) return
     const url = `${window.location.origin}/p/${modal.poll.id}`
@@ -400,7 +450,8 @@ export default function Home() {
 
   async function submitVote(choice: 1 | 2) {
     if (!modal || modal.phase !== 'choosing') return
-    if (!fingerprint) return
+    const fp = await ensureFingerprint()
+    if (!fp) return
     const optimistic = {
       a: modal.poll.totals.a + (choice === 1 ? 1 : 0),
       b: modal.poll.totals.b + (choice === 2 ? 1 : 0),
@@ -414,7 +465,7 @@ export default function Home() {
       body: JSON.stringify({
         poll_id: modal.poll.id,
         choice,
-        fingerprint,
+        fingerprint: fp,
         ...(parsed?.age ? { age: parsed.age } : {}),
         ...(parsed?.gender ? { gender: parsed.gender } : {}),
       }),
@@ -423,7 +474,7 @@ export default function Home() {
     if (!res.ok) {
       // Already voted from another browser/device — show result anyway
       if (result.error === 'Already voted') {
-        localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice }))
+        localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice, ts: Date.now() }))
         const breakdown = await fetchBreakdown(modal.poll.id)
         setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: modal.poll.totals, breakdown } : null)
         startCountdown()
@@ -434,7 +485,7 @@ export default function Home() {
     }
     if (parsed) {
       // Demographics already known — go straight to result
-      localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice }))
+      localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice, ts: Date.now() }))
       const breakdown = await fetchBreakdown(modal.poll.id)
       setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: optimistic, breakdown } : null)
       startCountdown()
@@ -450,12 +501,13 @@ export default function Home() {
     if (!demoGender) { setDemoError('Please select your gender.'); return }
     if (!modal) return
     setDemoError(''); setDemoSubmitting(true)
+    const fp = await ensureFingerprint()
     localStorage.setItem('majority_demo', JSON.stringify({ age: ageNum, gender: demoGender }))
-    localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice: modal.voted }))
+    localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice: modal.voted, ts: Date.now() }))
     await fetch('/api/update-demographic', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ poll_id: modal.poll.id, fingerprint, age: ageNum, gender: demoGender }),
+      body: JSON.stringify({ poll_id: modal.poll.id, fingerprint: fp, age: ageNum, gender: demoGender }),
     })
     const breakdown = await fetchBreakdown(modal.poll.id)
     setModal(prev => prev ? { ...prev, phase: 'result', breakdown } : null)
@@ -725,6 +777,22 @@ export default function Home() {
                     NEW
                   </div>
                 )}
+                {/* Expiry countdown pill */}
+                {(() => {
+                  const left = formatTimeLeft(poll.expires_at)
+                  if (!left) return null
+                  return (
+                    <div style={{
+                      position: 'absolute', bottom: 8, left: 8, zIndex: 2,
+                      background: 'rgba(0,0,0,0.4)', color: 'rgba(255,255,255,0.9)',
+                      fontSize: 10, fontWeight: 600, padding: '3px 9px',
+                      borderRadius: 100, backdropFilter: 'blur(8px)',
+                      pointerEvents: 'none',
+                    }}>
+                      ⏱ {left}
+                    </div>
+                  )
+                })()}
                 {/* Inner button: CSS planetFloat handles the vertical bob */}
                 <button
                   onClick={() => openModal(poll, colorA, colorB)}
@@ -1140,6 +1208,31 @@ export default function Home() {
                           />
                         </div>
                       )}
+
+                      {/* Change vote hint — within 10 min window */}
+                      {(() => {
+                        const stored = typeof window !== 'undefined' ? localStorage.getItem(`voted_${modal.poll.id}`) : null
+                        if (!stored) return null
+                        const parsed = JSON.parse(stored) as { ts?: number; choice: 1 | 2 }
+                        if (!parsed.ts) return null
+                        const elapsed = Date.now() - parsed.ts
+                        if (elapsed > 10 * 60 * 1000) return null
+                        const otherChoice = (modal.voted === 1 ? 2 : 1) as 1 | 2
+                        const otherLabel = otherChoice === 1 ? modal.poll.option_1 : modal.poll.option_2
+                        return (
+                          <button
+                            onClick={() => changeVote(otherChoice)}
+                            style={{
+                              background: 'none', border: '1px dashed rgba(255,255,255,0.25)',
+                              color: 'rgba(255,255,255,0.7)', fontSize: 12,
+                              padding: '8px 16px', borderRadius: 100,
+                              cursor: 'pointer', fontFamily: 'inherit',
+                            }}
+                          >
+                            ↻ Change to &ldquo;{otherLabel}&rdquo;
+                          </button>
+                        )
+                      })()}
 
                       {/* Share button */}
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
