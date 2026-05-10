@@ -680,76 +680,124 @@ export default function Home() {
               )}
 
               {/* Phase: demographic form */}
-              {modal.phase === 'demographic' && (
-                <div style={{
-                  background: day ? 'rgba(255,255,255,0.92)' : 'rgba(20,20,35,0.92)',
-                  border: `1px solid ${day ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'}`,
-                  borderRadius: 24, padding: '32px 28px',
-                  width: Math.min(vw * 0.88, 380),
-                  backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-                  animation: 'cosmosFadeUp 0.35s ease forwards',
-                }}>
-                  <p style={{ fontSize: 17, fontWeight: 700, color: day ? '#1a1a2e' : '#f0f0f8', margin: '0 0 6px' }}>
-                    One quick thing
-                  </p>
-                  <p style={{ fontSize: 13, color: day ? '#7a6a9e' : '#b0a8cc', margin: '0 0 24px' }}>
-                    Help us show how different groups voted
-                  </p>
-                  {demoError && <p style={{ color: '#ef4444', fontSize: 13, margin: '0 0 14px' }}>{demoError}</p>}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
-                    <input
-                      type="number" value={demoAge}
-                      onChange={e => setDemoAge(e.target.value)}
-                      placeholder="Your age" min={1} max={120}
-                      style={{
-                        width: '100%', padding: '12px 16px', fontSize: 14, borderRadius: 12,
-                        border: `1px solid ${day ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                        background: day ? '#fff' : 'rgba(255,255,255,0.07)',
-                        color: day ? '#1a1a2e' : '#f0f0f8', outline: 'none',
-                      }}
-                    />
-                    <select
-                      value={demoGender} onChange={e => setDemoGender(e.target.value)}
-                      style={{
-                        width: '100%', padding: '12px 16px', fontSize: 14, borderRadius: 12,
-                        border: `1px solid ${day ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                        background: day ? '#fff' : 'rgba(30,30,50,0.9)',
-                        color: day ? '#1a1a2e' : '#f0f0f8', outline: 'none',
-                      }}
-                    >
-                      <option value="">Select gender</option>
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                      <option value="prefer_not_to_say">Prefer not to say</option>
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', gap: 10 }}>
+              {modal.phase === 'demographic' && (() => {
+                const cardW = Math.min(vw * 0.88, 380)
+                const isDark = !day
+                return (
+                  <div style={{
+                    width: cardW,
+                    background: isDark
+                      ? 'linear-gradient(160deg, rgba(26,18,58,0.96) 0%, rgba(15,12,35,0.96) 100%)'
+                      : 'linear-gradient(160deg, rgba(255,255,255,0.97) 0%, rgba(248,244,255,0.97) 100%)',
+                    border: `1px solid ${isDark ? 'rgba(180,160,255,0.15)' : 'rgba(42,26,94,0.1)'}`,
+                    borderRadius: 28, padding: '36px 28px 28px',
+                    backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+                    boxShadow: isDark
+                      ? '0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)'
+                      : '0 24px 60px rgba(42,26,94,0.12), 0 0 0 1px rgba(42,26,94,0.04)',
+                    animation: 'cosmosFadeUp 0.38s cubic-bezier(0.2,0.8,0.2,1) forwards',
+                  }}>
+                    {/* Icon */}
+                    <div style={{
+                      width: 44, height: 44, borderRadius: '50%', marginBottom: 16,
+                      background: isDark
+                        ? 'linear-gradient(135deg, #7c4dff, #448aff)'
+                        : 'linear-gradient(135deg, #a78bfa, #60a5fa)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 20,
+                    }}>
+                      🌍
+                    </div>
+                    <p style={{
+                      fontSize: 20, fontWeight: 700, lineHeight: 1.2, margin: '0 0 8px',
+                      color: isDark ? '#f0f0f8' : '#1a1a2e',
+                      fontFamily: '"Cormorant Garamond", Georgia, serif',
+                    }}>
+                      One quick thing
+                    </p>
+                    <p style={{ fontSize: 13, margin: '0 0 28px', lineHeight: 1.5,
+                      color: isDark ? 'rgba(200,190,240,0.7)' : 'rgba(42,26,94,0.5)' }}>
+                      Help us show how different groups voted
+                    </p>
+
+                    {demoError && (
+                      <p style={{ color: '#f87171', fontSize: 13, margin: '0 0 16px',
+                        background: 'rgba(248,113,113,0.1)', padding: '8px 12px', borderRadius: 10 }}>
+                        {demoError}
+                      </p>
+                    )}
+
+                    {/* Age input */}
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600,
+                        letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6,
+                        color: isDark ? 'rgba(200,190,240,0.6)' : 'rgba(42,26,94,0.45)' }}>
+                        Age
+                      </label>
+                      <input
+                        type="number" value={demoAge}
+                        onChange={e => setDemoAge(e.target.value)}
+                        placeholder="e.g. 25" min={1} max={120}
+                        style={{
+                          width: '100%', padding: '13px 16px', fontSize: 15, borderRadius: 14,
+                          border: `1.5px solid ${isDark ? 'rgba(180,160,255,0.2)' : 'rgba(42,26,94,0.15)'}`,
+                          background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(42,26,94,0.04)',
+                          color: isDark ? '#f0f0f8' : '#1a1a2e', outline: 'none',
+                          transition: 'border-color 0.2s',
+                        }}
+                      />
+                    </div>
+
+                    {/* Gender */}
+                    <div style={{ marginBottom: 28 }}>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600,
+                        letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6,
+                        color: isDark ? 'rgba(200,190,240,0.6)' : 'rgba(42,26,94,0.45)' }}>
+                        Gender
+                      </label>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {(['male', 'female', 'prefer_not_to_say'] as const).map((g) => {
+                          const label = g === 'prefer_not_to_say' ? 'Other' : g.charAt(0).toUpperCase() + g.slice(1)
+                          const active = demoGender === g
+                          return (
+                            <button key={g} onClick={() => setDemoGender(g)}
+                              style={{
+                                flex: 1, padding: '11px 8px', borderRadius: 12, border: 'none',
+                                cursor: 'pointer', fontSize: 13, fontWeight: active ? 700 : 500,
+                                transition: 'all 0.18s ease',
+                                background: active
+                                  ? (isDark ? 'linear-gradient(135deg,#7c4dff,#448aff)' : 'linear-gradient(135deg,#2a1a5e,#4a3a8e)')
+                                  : (isDark ? 'rgba(255,255,255,0.07)' : 'rgba(42,26,94,0.06)'),
+                                color: active ? '#fff' : (isDark ? 'rgba(200,190,240,0.8)' : 'rgba(42,26,94,0.6)'),
+                                boxShadow: active ? (isDark ? '0 4px 16px rgba(124,77,255,0.4)' : '0 4px 16px rgba(42,26,94,0.2)') : 'none',
+                              }}>
+                              {label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
                     <button
                       onClick={submitDemographic} disabled={demoSubmitting}
                       style={{
-                        flex: 1, padding: '13px', borderRadius: 100, border: 'none',
-                        background: day ? '#1a1a2e' : '#f0f0f8',
-                        color: day ? '#fff' : '#1a1a2e',
-                        fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                        opacity: demoSubmitting ? 0.6 : 1,
+                        width: '100%', padding: '15px', borderRadius: 100, border: 'none',
+                        background: isDark
+                          ? 'linear-gradient(135deg, #7c4dff, #448aff)'
+                          : 'linear-gradient(135deg, #2a1a5e, #4a3a9e)',
+                        color: '#fff', fontSize: 15, fontWeight: 700,
+                        cursor: demoSubmitting ? 'default' : 'pointer',
+                        opacity: demoSubmitting ? 0.7 : 1,
+                        boxShadow: isDark ? '0 8px 32px rgba(124,77,255,0.35)' : '0 8px 24px rgba(42,26,94,0.25)',
+                        transition: 'opacity 0.2s, transform 0.15s',
+                        letterSpacing: '0.02em',
                       }}
                     >
                       {demoSubmitting ? 'Loading…' : 'See results →'}
                     </button>
-                    <button
-                      onClick={() => { setModal(prev => prev ? { ...prev, phase: 'result' } : null); startCountdown() }}
-                      style={{
-                        padding: '13px 18px', borderRadius: 100, border: 'none',
-                        background: 'transparent',
-                        color: day ? '#7a6a9e' : '#b0a8cc',
-                        fontSize: 13, cursor: 'pointer',
-                      }}
-                    >
-                      Skip
-                    </button>
                   </div>
-                </div>
-              )}
+                )
+              })()}
 
               {/* Phase: choosing / result — split circle */}
               {(modal.phase === 'choosing' || modal.phase === 'result') && (
