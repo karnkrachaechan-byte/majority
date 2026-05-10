@@ -448,8 +448,6 @@ export default function Home() {
       b: modal.poll.totals.b + (choice === 2 ? 1 : 0),
       total: modal.poll.totals.total + 1,
     }
-    const savedDemo = typeof window !== 'undefined' ? localStorage.getItem('majority_demo') : null
-    const parsed = savedDemo ? JSON.parse(savedDemo) : null
     const res = await fetch('/api/vote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -457,8 +455,6 @@ export default function Home() {
         poll_id: modal.poll.id,
         choice,
         fingerprint: fp,
-        ...(parsed?.age ? { age: parsed.age } : {}),
-        ...(parsed?.gender ? { gender: parsed.gender } : {}),
       }),
     })
     const result = await res.json()
@@ -474,16 +470,13 @@ export default function Home() {
       setDemoError(result.error || 'Failed to vote')
       return
     }
-    if (parsed) {
-      // Demographics already known — go straight to result
-      localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice, ts: Date.now() }))
-      const breakdown = await fetchBreakdown(modal.poll.id)
-      setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: optimistic, breakdown } : null)
-      startCountdown()
-    } else {
-      setDemoAge(''); setDemoGender(''); setDemoError('')
-      setModal(prev => prev ? { ...prev, phase: 'demographic', voted: choice, totals: optimistic } : null)
-    }
+    // Always show demographic confirm step — prefill if we have saved values
+    const savedDemo = typeof window !== 'undefined' ? localStorage.getItem('majority_demo') : null
+    const parsed = savedDemo ? JSON.parse(savedDemo) : null
+    setDemoAge(parsed?.age != null ? String(parsed.age) : '')
+    setDemoGender(parsed?.gender ?? '')
+    setDemoError('')
+    setModal(prev => prev ? { ...prev, phase: 'demographic', voted: choice, totals: optimistic } : null)
   }
 
   async function submitDemographic() {
@@ -970,11 +963,13 @@ export default function Home() {
                       color: isDark ? '#f0f0f8' : '#1a1a2e',
                       fontFamily: '"Cormorant Garamond", Georgia, serif',
                     }}>
-                      One quick thing
+                      {demoAge && demoGender ? 'Still you?' : 'One quick thing'}
                     </p>
                     <p style={{ fontSize: 13, margin: '0 0 28px', lineHeight: 1.5,
                       color: isDark ? 'rgba(200,190,240,0.7)' : 'rgba(42,26,94,0.5)' }}>
-                      Help us show how different groups voted
+                      {demoAge && demoGender
+                        ? 'Confirm or correct before we save your vote'
+                        : 'Help us show how different groups voted'}
                     </p>
 
                     {demoError && (
@@ -1050,7 +1045,7 @@ export default function Home() {
                         letterSpacing: '0.02em',
                       }}
                     >
-                      {demoSubmitting ? 'Loading…' : 'See results →'}
+                      {demoSubmitting ? 'Loading…' : 'Confirm & see results →'}
                     </button>
                   </div>
                 )
