@@ -590,6 +590,17 @@ export default function Home() {
                   }}>
                     {poll.question}
                   </span>
+                  {poll.voteCount > 0 && (
+                    <span style={{
+                      color: 'rgba(255,255,255,0.65)',
+                      fontSize: r > 140 ? 11 : 10,
+                      fontWeight: 500, marginTop: 6,
+                      letterSpacing: '0.04em',
+                      textShadow: '0 1px 6px rgba(0,0,0,0.3)',
+                    }}>
+                      {formatVotes(poll.voteCount)} votes
+                    </span>
+                  )}
                 </button>
               </div>
             )
