@@ -644,7 +644,11 @@ export default function Home() {
       {/* Poll Modal */}
       {modal && (() => {
         const size = Math.min(vw * 0.78, vh * 0.52, 460)
-        const totals = modal.totals ?? modal.poll.totals
+        const rawTotals = modal.totals ?? modal.poll.totals
+        // If total is still 0 but we know who voted, show 1 vote
+        const totals = (rawTotals.total === 0 && modal.voted)
+          ? { a: modal.voted === 1 ? 1 : 0, b: modal.voted === 2 ? 1 : 0, total: 1 }
+          : rawTotals
         const pctA = totals.total > 0 ? Math.round(totals.a / totals.total * 100) : 50
         const pctB = totals.total > 0 ? 100 - pctA : 50
         const mid = mixHex(modal.colorA, modal.colorB)
