@@ -305,16 +305,9 @@ export default function Home() {
     if (savedDemo && inserted?.id) {
       const { age, gender } = JSON.parse(savedDemo)
       await supabase.from('votes').update({ voter_age: age, voter_gender: gender }).eq('id', inserted.id)
-      const { data } = await supabase.from('votes').select('choice').eq('poll_id', modal.poll.id)
       // Mark voted only after full flow completes
       localStorage.setItem(`voted_${modal.poll.id}`, JSON.stringify({ choice }))
-      if (data && data.length > 0) {
-        const t = { a: 0, b: 0, total: 0 }
-        data.forEach(v => { if (v.choice === 1) t.a++; else if (v.choice === 2) t.b++; t.total++ })
-        setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: t } : null)
-      } else {
-        setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: optimistic } : null)
-      }
+      setModal(prev => prev ? { ...prev, phase: 'result', voted: choice, totals: optimistic } : null)
       startCountdown()
     } else {
       setDemoAge(''); setDemoGender(''); setDemoError('')
@@ -333,15 +326,8 @@ export default function Home() {
     if (modal.voteId) {
       await supabase.from('votes').update({ voter_age: ageNum, voter_gender: demoGender }).eq('id', modal.voteId)
     }
-    const { data } = await supabase.from('votes').select('choice').eq('poll_id', modal.poll.id)
-    if (data && data.length > 0) {
-      const t = { a: 0, b: 0, total: 0 }
-      data.forEach(v => { if (v.choice === 1) t.a++; else if (v.choice === 2) t.b++; t.total++ })
-      setModal(prev => prev ? { ...prev, phase: 'result', totals: t } : null)
-    } else {
-      // Keep optimistic totals if DB fetch returned nothing
-      setModal(prev => prev ? { ...prev, phase: 'result' } : null)
-    }
+    // Use optimistic totals — home page will show real counts on next load
+    setModal(prev => prev ? { ...prev, phase: 'result' } : null)
     setDemoSubmitting(false)
     startCountdown()
   }
