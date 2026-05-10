@@ -279,14 +279,23 @@ export default function Home() {
     setModal(null)
   }
 
-  function openModal(poll: PollData, colorA: string, colorB: string) {
+  async function openModal(poll: PollData, colorA: string, colorB: string) {
     if (modal) return
     const stored = typeof window !== 'undefined' ? localStorage.getItem(`voted_${poll.id}`) : null
     if (stored) {
+      // Verify the vote still exists in DB — admin may have deleted it
       const { choice } = JSON.parse(stored) as { choice: 1 | 2 }
-      setModal({ poll, colorA, colorB, phase: 'result', voted: choice, totals: poll.totals })
-      startCountdown()
-      return
+      const { count } = await supabase
+        .from('votes').select('id', { count: 'exact', head: true })
+        .eq('poll_id', poll.id)
+      if ((count ?? 0) === 0) {
+        // DB was cleared — stale localStorage, let them vote again
+        localStorage.removeItem(`voted_${poll.id}`)
+      } else {
+        setModal({ poll, colorA, colorB, phase: 'result', voted: choice, totals: poll.totals })
+        startCountdown()
+        return
+      }
     }
     setModal({ poll, colorA, colorB, phase: 'expanding' })
     setTimeout(() => setModal(prev => prev ? { ...prev, phase: 'choosing' } : null), 750)
