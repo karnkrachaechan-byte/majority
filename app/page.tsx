@@ -86,6 +86,20 @@ function mixHex(a: string, b: string): string {
   return `rgb(${r},${g},${bl})`
 }
 
+// "trending" = poll with highest vote velocity (votes per hour since creation)
+function trendingPollId(polls: PollData[]): string | null {
+  if (polls.length === 0) return null
+  let best: { id: string; v: number } | null = null
+  for (const p of polls) {
+    if (!p.created_at) continue
+    const hoursSince = Math.max(0.5, (Date.now() - new Date(p.created_at).getTime()) / 3600000)
+    const velocity = p.voteCount / hoursSince
+    if (velocity < 3) continue // need some momentum
+    if (!best || velocity > best.v) best = { id: p.id, v: velocity }
+  }
+  return best?.id ?? null
+}
+
 function det(id: string, salt: number): number {
   let h = 2166136261 ^ salt
   for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619) }
@@ -126,6 +140,48 @@ export default function Home() {
     fingerprintLoading.current = false
     return r.visitorId
   }
+
+  // Pull-to-refresh (mobile gesture)
+  const [pullDist, setPullDist] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
+  const pullDistRef = useRef(0)
+  useEffect(() => {
+    let startY = 0
+    let active = false
+    function onTouchStart(e: TouchEvent) {
+      if (window.scrollY > 0 || modal) return
+      startY = e.touches[0].clientY
+      active = true
+    }
+    function onTouchMove(e: TouchEvent) {
+      if (!active) return
+      const dy = e.touches[0].clientY - startY
+      if (dy > 0) {
+        const d = Math.min(120, dy * 0.6)
+        pullDistRef.current = d
+        setPullDist(d)
+      }
+    }
+    function onTouchEnd() {
+      if (!active) return
+      active = false
+      if (pullDistRef.current > 70) {
+        setRefreshing(true)
+        setChannel(c => c) // re-trigger fetch
+        setTimeout(() => { setRefreshing(false); setPullDist(0); pullDistRef.current = 0 }, 700)
+      } else {
+        setPullDist(0); pullDistRef.current = 0
+      }
+    }
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove', onTouchMove, { passive: true })
+    window.addEventListener('touchend', onTouchEnd, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [modal])
 
   // First-visit hint
   const [showHint, setShowHint] = useState(false)
@@ -186,6 +242,26 @@ export default function Home() {
     }
     fetchPolls()
   }, [channel])
+
+  // Real-time: increment vote counts as new votes come in
+  useEffect(() => {
+    if (polls.length === 0) return
+    const pollIds = new Set(polls.map(p => p.id))
+    const sub = supabase
+      .channel('votes-feed')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, payload => {
+        const v = payload.new as { poll_id: string; choice: number }
+        if (!pollIds.has(v.poll_id)) return
+        setPolls(prev => prev.map(p => {
+          if (p.id !== v.poll_id) return p
+          const a = p.totals.a + (v.choice === 1 ? 1 : 0)
+          const b = p.totals.b + (v.choice === 2 ? 1 : 0)
+          return { ...p, voteCount: p.voteCount + 1, totals: { a, b, total: a + b } }
+        }))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(sub) }
+  }, [polls.length])
 
   // Auto-open poll modal when arriving via shared URL ?poll=ID
   useEffect(() => {
@@ -341,6 +417,7 @@ export default function Home() {
   }, [planets, vw, vh])
 
   const totalVotes = polls.reduce((s, p) => s + p.voteCount, 0)
+  const trendingId = useMemo(() => trendingPollId(polls), [polls])
   const ch = channel || 'global'
 
   function startCountdown() {
@@ -441,6 +518,10 @@ export default function Home() {
 
   async function submitVote(choice: 1 | 2) {
     if (!modal || modal.phase !== 'choosing') return
+    // Haptic feedback — subtle tap (supported on mobile)
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate(20)
+    }
     const fp = await ensureFingerprint()
     if (!fp) return
     const optimistic = {
@@ -520,6 +601,29 @@ export default function Home() {
     <div style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative', background: bgGradient }}>
 
       {!day && <Stars vw={vw} vh={vh} />}
+
+      {/* Pull-to-refresh indicator */}
+      {(pullDist > 0 || refreshing) && (
+        <div style={{
+          position: 'fixed', top: pullDist - 30, left: '50%',
+          transform: 'translateX(-50%)', zIndex: 150,
+          width: 36, height: 36, borderRadius: '50%',
+          background: day ? 'rgba(255,255,255,0.85)' : 'rgba(20,20,35,0.85)',
+          border: `1px solid ${day ? 'rgba(42,26,94,0.15)' : 'rgba(245,240,232,0.15)'}`,
+          backdropFilter: 'blur(12px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: textColor, fontSize: 16,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+          transition: refreshing ? 'top 0.25s ease' : 'none',
+        }}>
+          <span style={{
+            display: 'inline-block',
+            animation: refreshing ? 'planetFloat 0.8s linear infinite' : 'none',
+            transform: refreshing ? 'none' : `rotate(${pullDist * 3}deg)`,
+            transition: refreshing ? 'none' : 'transform 0.05s linear',
+          }}>↓</span>
+        </div>
+      )}
 
       <div style={{
         position: 'absolute', top: '10%', right: '5%',
@@ -689,17 +793,30 @@ export default function Home() {
       )}
 
       {loading && (
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          gap: 10, color: subColor, fontSize: 14,
-        }}>
-          <span style={{
-            width: 10, height: 10, borderRadius: '50%',
-            background: subColor, opacity: 0.6,
-            animation: 'cosmosTwinkle 1.2s ease-in-out infinite',
-          }} />
-          Aligning the planets…
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+          {/* Skeleton planets — pulsing ghost circles in the same area */}
+          {[0, 1, 2, 3].map(i => {
+            const size = 120 + (i % 2) * 50
+            const x = 12 + i * 22 + (i % 2) * 4
+            const y = 52 + (i % 2) * 12
+            return (
+              <div key={i} style={{
+                position: 'absolute',
+                left: `${x}%`, top: `${y}%`,
+                width: size, height: size, borderRadius: '50%',
+                transform: 'translate(-50%, -50%)',
+                background: day ? 'rgba(42,26,94,0.07)' : 'rgba(245,240,232,0.05)',
+                animation: `cosmosTwinkle 1.8s ease-in-out ${i * 0.15}s infinite`,
+              }} />
+            )
+          })}
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 10, color: subColor, fontSize: 13, opacity: 0.7,
+          }}>
+            Aligning the planets…
+          </div>
         </div>
       )}
 
@@ -712,22 +829,36 @@ export default function Home() {
         }}>
           <div style={{ fontSize: 56, opacity: 0.6 }}>🌌</div>
           <p style={{ margin: 0, color: textColor, fontSize: 22, fontWeight: 600, fontFamily: serif }}>
-            The cosmos is empty
+            {channel && channel !== 'global' ? 'Quiet in here' : 'The cosmos is empty'}
           </p>
-          <p style={{ margin: 0, color: subColor, fontSize: 14, maxWidth: 280, lineHeight: 1.55 }}>
-            No polls in this channel yet. Be the first to ask the world something.
+          <p style={{ margin: 0, color: subColor, fontSize: 14, maxWidth: 320, lineHeight: 1.55 }}>
+            {channel && channel !== 'global'
+              ? `No polls yet in ${getChannel(channel).name}. Switch to Global to see all polls, or be the first to ask.`
+              : 'No polls yet. Be the first to ask the world something.'}
           </p>
-          <button onClick={() => router.push('/create')} style={{
-            marginTop: 4,
-            background: day ? '#2a1a5e' : '#f5f0e8',
-            color: day ? '#fff' : '#1a0e3a',
-            border: 'none', borderRadius: 100,
-            padding: '12px 28px', fontSize: 14, fontWeight: 700,
-            cursor: 'pointer', fontFamily: 'inherit',
-            boxShadow: day ? '0 8px 24px rgba(42,26,94,0.25)' : '0 8px 24px rgba(0,0,0,0.4)',
-          }}>
-            + Ask the world
-          </button>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4 }}>
+            {channel && channel !== 'global' && (
+              <button onClick={() => handleChannelSelect('global')} style={{
+                background: 'transparent',
+                color: textColor,
+                border: `1px solid ${day ? 'rgba(42,26,94,0.25)' : 'rgba(245,240,232,0.25)'}`,
+                borderRadius: 100, padding: '12px 24px', fontSize: 14,
+                fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                🌍 Switch to Global
+              </button>
+            )}
+            <button onClick={() => router.push('/create')} style={{
+              background: day ? '#2a1a5e' : '#f5f0e8',
+              color: day ? '#fff' : '#1a0e3a',
+              border: 'none', borderRadius: 100,
+              padding: '12px 28px', fontSize: 14, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'inherit',
+              boxShadow: day ? '0 8px 24px rgba(42,26,94,0.25)' : '0 8px 24px rgba(0,0,0,0.4)',
+            }}>
+              + Ask the world
+            </button>
+          </div>
         </div>
       )}
 
@@ -749,7 +880,7 @@ export default function Home() {
                 }}
               >
                 {/* NEW badge — polls created within 24h */}
-                {poll.created_at && (Date.now() - new Date(poll.created_at).getTime()) < 86400000 && (
+                {poll.created_at && (Date.now() - new Date(poll.created_at).getTime()) < 86400000 && trendingId !== poll.id && (
                   <div style={{
                     position: 'absolute', top: 8, right: 8, zIndex: 2,
                     background: 'linear-gradient(135deg, #ff5252, #ff9100)',
@@ -759,6 +890,20 @@ export default function Home() {
                     pointerEvents: 'none',
                   }}>
                     NEW
+                  </div>
+                )}
+                {/* TRENDING badge — highest vote velocity, takes priority over NEW */}
+                {trendingId === poll.id && (
+                  <div style={{
+                    position: 'absolute', top: 8, right: 8, zIndex: 2,
+                    background: 'linear-gradient(135deg, #f59e0b, #ef4444)',
+                    color: '#fff', fontSize: 10, fontWeight: 800,
+                    letterSpacing: '0.08em', padding: '4px 10px',
+                    borderRadius: 100, boxShadow: '0 4px 14px rgba(245,158,11,0.5)',
+                    pointerEvents: 'none',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    🔥 TRENDING
                   </div>
                 )}
                 {/* Inner button: CSS planetFloat handles the vertical bob */}
