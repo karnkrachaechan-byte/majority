@@ -6,7 +6,7 @@ import FingerprintJS from '@fingerprintjs/fingerprintjs'
 import { supabase } from '@/lib/supabase'
 import { assignPalette } from '@/lib/theme'
 import { useDayNight, setDayNightOverride } from '@/components/cosmos/useDayNight'
-import { useViewport } from '@/components/cosmos/useOrbit'
+import { useViewport, useMouseParallax } from '@/components/cosmos/useOrbit'
 import { getChannel, CHANNELS } from '@/lib/channels'
 import { t } from '@/lib/i18n'
 import { DemographicRings } from '@/components/cosmos/DemographicRings'
@@ -110,6 +110,7 @@ export default function Home() {
   const router = useRouter()
   const day = useDayNight()
   const { w: vw, h: vh } = useViewport()
+  const mouse = useMouseParallax()
   const [polls, setPolls] = useState<PollData[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<ModalState | null>(null)
@@ -615,13 +616,23 @@ export default function Home() {
     const theWord = t(ch, 'home.headline.the')
     if (theWord && template.includes('{the}')) {
       const parts = template.split('{the}')
-      return <>{parts[0]}<em style={{ fontStyle: 'italic' }}>{theWord}</em>{parts[1]}</>
+      return <>{parts[0]}<em style={{
+        fontStyle: 'italic',
+        background: day
+          ? 'linear-gradient(135deg, #ff9100, #ff5252)'
+          : 'linear-gradient(135deg, #b69aff, #66d4ff)',
+        WebkitBackgroundClip: 'text', backgroundClip: 'text',
+        WebkitTextFillColor: 'transparent', color: 'transparent',
+      }}>{theWord}</em>{parts[1]}</>
     }
     return template
   }
 
   return (
     <div style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative', background: bgGradient }}>
+
+      {/* Atmospheric depth: nebula clouds drift in the background */}
+      <Nebula vw={vw} vh={vh} day={day} />
 
       {!day && <Stars vw={vw} vh={vh} />}
 
@@ -946,7 +957,11 @@ export default function Home() {
 
       {/* Planet cluster */}
       {!loading && polls.length > 0 && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 5 }}>
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 5,
+          transform: `translate3d(${mouse.x * 18}px, ${mouse.y * 10}px, 0)`,
+          transition: 'transform 0.4s cubic-bezier(0.2,0.8,0.2,1)',
+        }}>
           {planets.map(({ poll, r, colorA, colorB, floatDur, floatDelay, amp }, idx) => {
             const mid = mixHex(colorA, colorB)
             const gradient = `radial-gradient(circle at 35% 32%, ${colorA} 0%, ${mid} 52%, ${colorB} 100%)`
@@ -996,7 +1011,7 @@ export default function Home() {
                     position: 'absolute', inset: 0,
                     borderRadius: '50%', border: 'none', cursor: 'pointer',
                     background: gradient,
-                    boxShadow: `0 8px 32px ${colorA}66, 0 2px 12px ${colorB}55`,
+                    boxShadow: `0 0 70px ${colorA}33, 0 0 120px ${colorB}22, 0 8px 32px ${colorA}66, inset 0 -10px 24px rgba(0,0,0,0.18)`,
                     display: 'flex', flexDirection: 'column',
                     alignItems: 'center', justifyContent: 'center',
                     textAlign: 'center', padding: 14,
@@ -1141,7 +1156,7 @@ export default function Home() {
                 <div style={{
                   width: size, height: size, borderRadius: '50%',
                   background: `radial-gradient(circle at 35% 32%, ${modal.colorA} 0%, ${mid} 52%, ${modal.colorB} 100%)`,
-                  boxShadow: `0 24px 80px ${modal.colorA}88, 0 8px 32px ${modal.colorB}55`,
+                  boxShadow: `0 0 120px ${modal.colorA}55, 0 24px 80px ${modal.colorA}88, inset 0 -16px 40px rgba(0,0,0,0.25)`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: 32, textAlign: 'center',
                   animation: 'cosmosFadeUp 0.4s cubic-bezier(0.2,0.8,0.2,1) forwards',
@@ -1759,6 +1774,47 @@ function Stars({ vw, vh }: { vw: number; vh: number }) {
           left: s.x, top: s.y,
           animationDuration: `${s.duration}s`,
           animationDelay: `${s.delay}s`,
+        }} />
+      ))}
+    </div>
+  )
+}
+
+function Nebula({ vw, vh, day }: { vw: number; vh: number; day: boolean }) {
+  const clouds = useMemo(() => {
+    const rng = mulberry32(day ? 731 : 142)
+    return Array.from({ length: 6 }, (_, i) => {
+      const hue = day
+        ? 25 + rng() * 30   // warm pastels: amber→peach
+        : 250 + rng() * 80  // violet→magenta→blue
+      const sat = day ? 70 : 75
+      const light = day ? 78 : 50
+      const alpha = day ? 0.18 : 0.28
+      return {
+        id: i,
+        x: rng() * vw,
+        y: rng() * vh * 0.75,
+        size: 280 + rng() * 460,
+        color: `hsla(${hue}, ${sat}%, ${light}%, ${alpha})`,
+        duration: 70 + rng() * 80,
+        delay: -rng() * 80,
+        scale: 0.85 + rng() * 0.3,
+      }
+    })
+  }, [vw, vh, day])
+
+  return (
+    <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+      {clouds.map(c => (
+        <div key={c.id} style={{
+          position: 'absolute',
+          left: c.x - c.size / 2, top: c.y - c.size / 2,
+          width: c.size, height: c.size, borderRadius: '50%',
+          background: `radial-gradient(circle at 50% 50%, ${c.color} 0%, transparent 65%)`,
+          filter: 'blur(36px)',
+          ['--s' as string]: String(c.scale),
+          animation: `cosmosCloudDrift ${c.duration}s linear ${c.delay}s infinite`,
+          willChange: 'transform',
         }} />
       ))}
     </div>
