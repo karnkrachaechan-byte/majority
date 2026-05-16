@@ -122,6 +122,7 @@ export default function Home() {
   const [showChannelDropdown, setShowChannelDropdown] = useState(false)
   const [fingerprint, setFingerprint] = useState('')
   const [shareCopied, setShareCopied] = useState(false)
+  const [sortMode, setSortMode] = useState<'trending' | 'new' | 'top'>('trending')
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Lazy-load fingerprint — only when user is about to vote (saves ~50KB on initial load)
@@ -279,22 +280,42 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [polls])
 
+  // Sort mode + visible cap (12 max planets to keep view breathable)
+  const MAX_PLANETS = 12
+  const visiblePolls = useMemo(() => {
+    if (polls.length === 0) return polls
+    const scored = polls.map(p => {
+      const ageHours = Math.max(0.5, (Date.now() - new Date(p.created_at).getTime()) / 3600000)
+      return {
+        poll: p,
+        trending: p.voteCount / ageHours,           // velocity
+        newest: new Date(p.created_at).getTime(),   // higher = newer
+        top: p.voteCount,
+      }
+    })
+    let sorted: typeof scored
+    if (sortMode === 'new') sorted = [...scored].sort((a, b) => b.newest - a.newest)
+    else if (sortMode === 'top') sorted = [...scored].sort((a, b) => b.top - a.top)
+    else sorted = [...scored].sort((a, b) => b.trending - a.trending)
+    return sorted.slice(0, MAX_PLANETS).map(s => s.poll)
+  }, [polls, sortMode])
+
   const planets = useMemo(() => {
-    const n = polls.length
+    const n = visiblePolls.length
     if (n === 0) return []
 
     // Large planet radii — fill the screen like the reference design
     const minR = vw < 480 ? 90  : vw < 768 ? 115 : 140
     const maxR = vw < 480 ? 135 : vw < 768 ? 170 : 210
-    const radii = polls.map(p =>
+    const radii = visiblePolls.map(p =>
       Math.min(minR + Math.sqrt(p.voteCount) * 4, maxR)
     )
 
-    // Hero text ends roughly here — mobile needs more room (text wraps more)
-    const heroBottom = Math.max(72, vh * 0.10) + (vw < 480 ? 310 : 250)
+    // Hero text ends roughly here — mobile needs more room (text wraps more + chips)
+    const heroBottom = Math.max(72, vh * 0.10) + (vw < 480 ? 360 : 300)
 
     // Initial x: spread evenly across full width, outermost planets bleed off edges
-    const positions: { x: number; y: number }[] = polls.map((poll, i) => {
+    const positions: { x: number; y: number }[] = visiblePolls.map((poll, i) => {
       const r = radii[i]
       const s1 = det(poll.id, 11)
       const s2 = det(poll.id, 22)
@@ -335,7 +356,7 @@ export default function Home() {
       if (!moved) break
     }
 
-    return polls.map((poll, i) => {
+    return visiblePolls.map((poll, i) => {
       const r = radii[i]
       const { colorA, colorB } = assignPalette(poll.id)
       const seed = det(poll.id, 99)
@@ -345,7 +366,7 @@ export default function Home() {
 
       return { poll, r, x: positions[i].x, y: positions[i].y, colorA, colorB, floatDur, floatDelay, amp }
     })
-  }, [polls, vw, vh])
+  }, [visiblePolls, vw, vh])
 
   const askPos = useMemo(() => {
     const fallbackX = vw * 0.5
@@ -375,7 +396,7 @@ export default function Home() {
 
   useEffect(() => {
     if (planets.length === 0) return
-    const heroBottom = Math.max(72, vh * 0.10) + (vw < 480 ? 310 : 250)
+    const heroBottom = Math.max(72, vh * 0.10) + (vw < 480 ? 360 : 300)
     const pad = 28
 
     physicsRef.current = planets.map(p => {
@@ -789,6 +810,50 @@ export default function Home() {
           }}>
             {t(ch, 'home.subtext')}
           </p>
+
+          {/* Sort filter chips */}
+          {polls.length > 0 && (
+            <div style={{
+              display: 'flex', gap: 8, marginTop: 14,
+              pointerEvents: 'auto', flexWrap: 'wrap', justifyContent: 'center',
+            }}>
+              {([
+                { id: 'trending', icon: '🔥', label: 'Trending' },
+                { id: 'new', icon: '✨', label: 'New' },
+                { id: 'top', icon: '📊', label: 'Top' },
+              ] as const).map(opt => {
+                const active = sortMode === opt.id
+                return (
+                  <button key={opt.id} onClick={() => setSortMode(opt.id)} style={{
+                    background: active
+                      ? (day ? 'rgba(42,26,94,0.9)' : 'rgba(245,240,232,0.15)')
+                      : 'transparent',
+                    color: active ? (day ? '#fff' : textColor) : subColor,
+                    border: `1px solid ${
+                      active
+                        ? (day ? 'transparent' : 'rgba(245,240,232,0.3)')
+                        : (day ? 'rgba(42,26,94,0.18)' : 'rgba(245,240,232,0.18)')
+                    }`,
+                    borderRadius: 100, padding: '7px 14px',
+                    fontSize: 12, fontWeight: active ? 700 : 500,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    transition: 'all 0.18s ease',
+                  }}>
+                    <span style={{ fontSize: 13 }}>{opt.icon}</span>
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* "X more polls" hint if cap is hit */}
+          {polls.length > MAX_PLANETS && (
+            <p style={{ fontSize: 11, color: subColor, marginTop: 8, opacity: 0.7 }}>
+              Showing {MAX_PLANETS} of {polls.length} polls
+            </p>
+          )}
         </div>
       )}
 
