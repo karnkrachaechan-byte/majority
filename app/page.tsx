@@ -123,6 +123,8 @@ export default function Home() {
   const [fingerprint, setFingerprint] = useState('')
   const [shareCopied, setShareCopied] = useState(false)
   const [sortMode, setSortMode] = useState<'trending' | 'new' | 'top'>('trending')
+  const [browseOpen, setBrowseOpen] = useState(false)
+  const [browseSearch, setBrowseSearch] = useState('')
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Lazy-load fingerprint — only when user is about to vote (saves ~50KB on initial load)
@@ -848,11 +850,26 @@ export default function Home() {
             </div>
           )}
 
-          {/* "X more polls" hint if cap is hit */}
-          {polls.length > MAX_PLANETS && (
-            <p style={{ fontSize: 11, color: subColor, marginTop: 8, opacity: 0.7 }}>
-              Showing {MAX_PLANETS} of {polls.length} polls
-            </p>
+          {/* Browse all polls — always available when there's anything to browse */}
+          {polls.length > 0 && (
+            <button
+              onClick={() => setBrowseOpen(true)}
+              style={{
+                marginTop: 10, pointerEvents: 'auto',
+                background: 'none', border: 'none',
+                color: subColor, fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+                padding: '4px 8px',
+                display: 'flex', alignItems: 'center', gap: 6,
+                textDecoration: 'underline', textDecorationStyle: 'dotted',
+                textUnderlineOffset: 4, opacity: 0.85,
+              }}
+            >
+              {polls.length > MAX_PLANETS
+                ? `Browse all ${polls.length} polls`
+                : `Search & browse polls`}
+              <span style={{ fontSize: 13 }}>→</span>
+            </button>
           )}
         </div>
       )}
@@ -1463,6 +1480,199 @@ export default function Home() {
                   )}
                 </>
               )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Browse all overlay */}
+      {browseOpen && (() => {
+        const q = browseSearch.trim().toLowerCase()
+        const filtered = polls.filter(p => {
+          if (!q) return true
+          return p.question.toLowerCase().includes(q)
+            || p.option_1.toLowerCase().includes(q)
+            || p.option_2.toLowerCase().includes(q)
+        })
+        const scored = filtered.map(p => {
+          const ageHours = Math.max(0.5, (Date.now() - new Date(p.created_at).getTime()) / 3600000)
+          return {
+            poll: p,
+            trending: p.voteCount / ageHours,
+            newest: new Date(p.created_at).getTime(),
+            top: p.voteCount,
+          }
+        })
+        const sorted = (sortMode === 'new'
+          ? [...scored].sort((a, b) => b.newest - a.newest)
+          : sortMode === 'top'
+          ? [...scored].sort((a, b) => b.top - a.top)
+          : [...scored].sort((a, b) => b.trending - a.trending)
+        ).map(s => s.poll)
+
+        const panelBg = day
+          ? 'linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(248,244,255,0.97) 100%)'
+          : 'linear-gradient(180deg, rgba(15,12,35,0.97) 0%, rgba(20,15,50,0.97) 100%)'
+        const borderC = day ? 'rgba(42,26,94,0.1)' : 'rgba(245,240,232,0.1)'
+        const itemBg = day ? 'rgba(42,26,94,0.05)' : 'rgba(255,255,255,0.05)'
+
+        return (
+          <div
+            onClick={() => setBrowseOpen(false)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 220,
+              background: 'rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+              display: 'flex', justifyContent: 'center', alignItems: 'flex-end',
+              animation: 'cosmosFadeUp 0.25s ease forwards',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: '100%', maxWidth: 560, height: '92vh', maxHeight: 760,
+                background: panelBg, borderRadius: '24px 24px 0 0',
+                border: `1px solid ${borderC}`,
+                backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+                display: 'flex', flexDirection: 'column',
+                boxShadow: '0 -16px 60px rgba(0,0,0,0.4)',
+              }}
+            >
+              {/* Header */}
+              <div style={{ padding: '20px 20px 12px', borderBottom: `1px solid ${borderC}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                  <h2 style={{
+                    margin: 0, fontSize: 22, fontWeight: 700,
+                    color: textColor, fontFamily: serif,
+                  }}>
+                    All polls
+                  </h2>
+                  <button
+                    onClick={() => setBrowseOpen(false)}
+                    aria-label="Close"
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: subColor, fontSize: 24, padding: 0,
+                      width: 32, height: 32, display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >×</button>
+                </div>
+                {/* Search */}
+                <div style={{ position: 'relative' }}>
+                  <span style={{
+                    position: 'absolute', left: 14, top: '50%',
+                    transform: 'translateY(-50%)', fontSize: 14, opacity: 0.5,
+                  }}>🔍</span>
+                  <input
+                    type="text" value={browseSearch}
+                    onChange={e => setBrowseSearch(e.target.value)}
+                    placeholder="Search questions…"
+                    style={{
+                      width: '100%', padding: '11px 14px 11px 38px',
+                      borderRadius: 12, fontSize: 14,
+                      border: `1px solid ${borderC}`,
+                      background: itemBg, color: textColor,
+                      outline: 'none', fontFamily: 'inherit',
+                    }}
+                  />
+                </div>
+                {/* Sort chips in overlay */}
+                <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+                  {([
+                    { id: 'trending', icon: '🔥', label: 'Trending' },
+                    { id: 'new', icon: '✨', label: 'New' },
+                    { id: 'top', icon: '📊', label: 'Top' },
+                  ] as const).map(opt => {
+                    const active = sortMode === opt.id
+                    return (
+                      <button key={opt.id} onClick={() => setSortMode(opt.id)} style={{
+                        background: active
+                          ? (day ? 'rgba(42,26,94,0.9)' : 'rgba(245,240,232,0.18)')
+                          : 'transparent',
+                        color: active ? (day ? '#fff' : textColor) : subColor,
+                        border: `1px solid ${
+                          active
+                            ? (day ? 'transparent' : 'rgba(245,240,232,0.3)')
+                            : borderC
+                        }`,
+                        borderRadius: 100, padding: '6px 12px',
+                        fontSize: 11, fontWeight: active ? 700 : 500,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                        display: 'flex', alignItems: 'center', gap: 4,
+                      }}>
+                        <span>{opt.icon}</span>{opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Scrollable list */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 24px' }}>
+                {sorted.length === 0 ? (
+                  <p style={{ textAlign: 'center', padding: '40px 20px', color: subColor, fontSize: 14 }}>
+                    {q ? `No polls match "${browseSearch}"` : 'No polls yet.'}
+                  </p>
+                ) : (
+                  sorted.map(poll => {
+                    const { colorA, colorB } = assignPalette(poll.id)
+                    const isNew = poll.created_at && (Date.now() - new Date(poll.created_at).getTime()) < 86400000
+                    const isTrending = trendingId === poll.id
+                    return (
+                      <button
+                        key={poll.id}
+                        onClick={() => {
+                          setBrowseOpen(false)
+                          openModal(poll, colorA, colorB)
+                        }}
+                        style={{
+                          width: '100%', textAlign: 'left',
+                          background: 'transparent', border: 'none',
+                          padding: '14px 12px', borderRadius: 14,
+                          cursor: 'pointer', fontFamily: 'inherit',
+                          display: 'flex', alignItems: 'flex-start', gap: 12,
+                          transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = itemBg)}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {/* Color swatch */}
+                        <div style={{
+                          flexShrink: 0, width: 36, height: 36, borderRadius: '50%',
+                          background: `radial-gradient(circle at 35% 30%, ${colorA}, ${colorB})`,
+                          boxShadow: `0 4px 12px ${colorA}55`,
+                          marginTop: 2,
+                        }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: textColor, lineHeight: 1.35 }}>
+                              {poll.question}
+                            </span>
+                            {isTrending && (
+                              <span style={{
+                                fontSize: 9, fontWeight: 800, letterSpacing: '0.08em',
+                                padding: '2px 7px', borderRadius: 100, color: '#fff',
+                                background: 'linear-gradient(135deg, #f59e0b, #ef4444)',
+                              }}>🔥 TRENDING</span>
+                            )}
+                            {!isTrending && isNew && (
+                              <span style={{
+                                fontSize: 9, fontWeight: 800, letterSpacing: '0.08em',
+                                padding: '2px 7px', borderRadius: 100, color: '#fff',
+                                background: 'linear-gradient(135deg, #ff5252, #ff9100)',
+                              }}>NEW</span>
+                            )}
+                          </div>
+                          <p style={{ margin: 0, fontSize: 12, color: subColor, lineHeight: 1.4 }}>
+                            {poll.option_1} <span style={{ opacity: 0.5 }}>vs</span> {poll.option_2} · {formatVotes(poll.voteCount)} {poll.voteCount === 1 ? 'vote' : 'votes'}
+                          </p>
+                        </div>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
             </div>
           </div>
         )
