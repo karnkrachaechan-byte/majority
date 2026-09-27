@@ -17,7 +17,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'home.ask.sub':         'your own',
 
     // Vote page
-    'vote.hint':            'One vote per person · changeable within 10 min',
+    'vote.hint':            'One vote per person · changeable once within 5 min',
     'vote.total':           '{n} vote total',
     'vote.totals':          '{n} votes total',
     'vote.change':          'Tap the other planet to change your vote',
@@ -82,7 +82,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'home.ask.sub':         'ถามโลก',
 
     // Vote page
-    'vote.hint':            'หนึ่งเสียงต่อคน · เปลี่ยนได้ภายใน 10 นาที',
+    'vote.hint':            'หนึ่งเสียงต่อคน · เปลี่ยนได้หนึ่งครั้งภายใน 5 นาที',
     'vote.total':           '{n} เสียง',
     'vote.totals':          '{n} เสียง',
     'vote.change':          'แตะดาวเคราะห์อีกดวงเพื่อเปลี่ยนเสียง',

@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { Resend } from 'resend'
 import { randomBytes } from 'crypto'
+import { EMAIL_FROM, appUrl as getAppUrl, isValidEmail } from '@/lib/server-utils'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(req: NextRequest) {
-  const { email } = await req.json()
-  if (!email) return NextResponse.json({ error: 'Email required' }, { status: 400 })
+  const body = await req.json()
+  const email = typeof body.email === 'string' ? body.email.trim() : ''
+  if (!isValidEmail(email)) return NextResponse.json({ error: 'Email required' }, { status: 400 })
 
   const { data: polls } = await supabaseAdmin
     .from('polls')
@@ -24,11 +26,11 @@ export async function POST(req: NextRequest) {
 
   await supabaseAdmin.from('dashboard_tokens').insert({ email, token, expires_at: expiresAt })
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const appUrl = getAppUrl()
   const dashUrl = `${appUrl}/dashboard?email=${encodeURIComponent(email)}&token=${token}`
 
   await resend.emails.send({
-    from: 'Majority <onboarding@resend.dev>',
+    from: EMAIL_FROM,
     to: email,
     subject: 'Your Majority dashboard link',
     html: `

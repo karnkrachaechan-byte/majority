@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { isValidFingerprint, isValidId } from '@/lib/server-utils'
+
+const GENDERS = new Set(['male', 'female', 'prefer_not_to_say'])
 
 export async function POST(req: NextRequest) {
   try {
     const { poll_id, fingerprint, age, gender } = await req.json()
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('x-real-ip') || '0.0.0.0'
+
+    if (!isValidId(poll_id) || !isValidFingerprint(fingerprint)) {
+      return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+    }
 
     const updateData: Record<string, unknown> = {}
-    if (age) updateData.voter_age = age
-    if (gender) updateData.voter_gender = gender
+    if (typeof age === 'number' && Number.isInteger(age) && age >= 1 && age <= 120) updateData.voter_age = age
+    if (typeof gender === 'string' && GENDERS.has(gender)) updateData.voter_gender = gender
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ success: true })
@@ -18,7 +24,7 @@ export async function POST(req: NextRequest) {
       .from('votes')
       .update(updateData)
       .eq('poll_id', poll_id)
-      .or(`fingerprint.eq.${fingerprint},ip_address.eq.${ip}`)
+      .eq('fingerprint', fingerprint)
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

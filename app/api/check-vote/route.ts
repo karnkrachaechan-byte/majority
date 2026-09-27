@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { isValidFingerprint, isValidId } from '@/lib/server-utils'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const pollId = searchParams.get('poll_id')
   const fingerprint = searchParams.get('fingerprint')
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('x-real-ip') || '0.0.0.0'
 
-  if (!pollId || !fingerprint) {
+  if (!isValidId(pollId) || !isValidFingerprint(fingerprint)) {
     return NextResponse.json({ vote: null })
   }
 
@@ -15,8 +15,9 @@ export async function GET(req: NextRequest) {
     .from('votes')
     .select('choice, can_change_until, voter_age, has_changed')
     .eq('poll_id', pollId)
-    .or(`fingerprint.eq.${fingerprint},ip_address.eq.${ip}`)
-    .single()
+    .eq('fingerprint', fingerprint)
+    .limit(1)
+    .maybeSingle()
 
   return NextResponse.json({ vote: data || null })
 }

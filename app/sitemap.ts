@@ -1,6 +1,8 @@
 import { MetadataRoute } from 'next'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
+export const revalidate = 3600
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = 'https://www.majority.asia'
   const { data: polls } = await supabaseAdmin

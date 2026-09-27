@@ -23,7 +23,8 @@ interface Poll {
   question: string;
   option_1: string;
   option_2: string;
-  expires_at: string | null;
+  is_active: boolean;
+  is_archived: boolean;
 }
 
 interface DemoBreakdown {
@@ -116,7 +117,7 @@ export default function PollPage() {
       setFingerprint(fpId);
 
       const { data: pollData } = await supabase
-        .from('polls').select('*').eq('id', id).single();
+        .from('polls').select('id, question, option_1, option_2, is_active, is_archived, created_at, channel').eq('id', id).single();
       setPoll(pollData);
 
       const res = await fetch(`/api/check-vote?poll_id=${id}&fingerprint=${fpId}`);
@@ -201,7 +202,7 @@ export default function PollPage() {
     await fetch('/api/report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ poll_id: id }),
+      body: JSON.stringify({ poll_id: id, fingerprint }),
     });
     alert('Thank you for reporting. We will review this poll.');
   }
@@ -240,11 +241,12 @@ export default function PollPage() {
     </div>
   );
 
-  const isExpired = poll.expires_at ? new Date() > new Date(poll.expires_at) : false;
-  if (isExpired && stage === 'voting') return (
+  // Polls never expire — only unpublished, reported or archived ones are closed
+  const isClosed = !poll.is_active || poll.is_archived;
+  if (isClosed && stage === 'voting') return (
     <div className="cosmos-stage" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
       {day ? <DaySky w={vw} h={vh} /> : <NightSky w={vw} h={vh} />}
-      <p style={{ fontSize: 20, fontWeight: 700, color: textColor, position: 'relative' }}>This poll has closed</p>
+      <p style={{ fontSize: 20, fontWeight: 700, color: textColor, position: 'relative' }}>This poll isn’t available</p>
       <p style={{ color: subColor, fontSize: 14, position: 'relative' }}>{poll.question}</p>
       <a href="/" style={{ color: subColor, fontSize: 14, marginTop: 8, position: 'relative' }}>← See other polls</a>
     </div>
@@ -294,7 +296,7 @@ export default function PollPage() {
         </p>
         {stage === 'voting' && (
           <p style={{ fontSize: 13, color: subColor, marginTop: 12 }}>
-            One vote per person · changeable within 10 min
+            One vote per person · changeable once within 5 min
           </p>
         )}
       </div>

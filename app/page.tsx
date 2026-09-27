@@ -113,6 +113,8 @@ export default function Home() {
   const mouse = useMouseParallax()
   const [polls, setPolls] = useState<PollData[]>([])
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(false)
+  const [retryKey, setRetryKey] = useState(0)
   const [modal, setModal] = useState<ModalState | null>(null)
   const [countdown, setCountdown] = useState(0)
   const [demoAge, setDemoAge] = useState('')
@@ -129,20 +131,17 @@ export default function Home() {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Lazy-load fingerprint — only when user is about to vote (saves ~50KB on initial load)
-  const fingerprintLoading = useRef(false)
+  const fingerprintLoading = useRef<Promise<string> | null>(null)
   async function ensureFingerprint(): Promise<string> {
     if (fingerprint) return fingerprint
-    if (fingerprintLoading.current) {
-      // Already loading — wait briefly then read state
-      await new Promise(r => setTimeout(r, 200))
-      return fingerprint
+    // Share one in-flight load so concurrent callers all get the real id
+    if (!fingerprintLoading.current) {
+      fingerprintLoading.current = FingerprintJS.load()
+        .then(fp => fp.get())
+        .then(r => { setFingerprint(r.visitorId); return r.visitorId })
+        .catch(() => { fingerprintLoading.current = null; return '' })
     }
-    fingerprintLoading.current = true
-    const fp = await FingerprintJS.load()
-    const r = await fp.get()
-    setFingerprint(r.visitorId)
-    fingerprintLoading.current = false
-    return r.visitorId
+    return fingerprintLoading.current
   }
 
   // Pull-to-refresh (mobile gesture)
@@ -211,6 +210,17 @@ export default function Home() {
   useEffect(() => {
     if (!channel) return
     async function fetchPolls() {
+      setFetchError(false)
+      setLoading(true)
+      try {
+        await loadPolls()
+      } catch {
+        setPolls([])
+        setFetchError(true)
+        setLoading(false)
+      }
+    }
+    async function loadPolls() {
       let query = supabase
         .from('polls')
         .select('id, question, option_1, option_2, created_at')
@@ -222,7 +232,8 @@ export default function Home() {
         query = query.eq('channel', channel)
       }
 
-      const { data: pollData } = await query
+      const { data: pollData, error: pollError } = await query
+      if (pollError) throw pollError
 
       if (!pollData || pollData.length === 0) { setPolls([]); setLoading(false); return }
 
@@ -245,7 +256,7 @@ export default function Home() {
       setLoading(false)
     }
     fetchPolls()
-  }, [channel])
+  }, [channel, retryKey])
 
   // Real-time: increment vote counts as new votes come in
   useEffect(() => {
@@ -253,8 +264,8 @@ export default function Home() {
     const pollIds = new Set(polls.map(p => p.id))
     const sub = supabase
       .channel('votes-feed')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, payload => {
-        const v = payload.new as { poll_id: string; choice: number }
+      .on('broadcast', { event: 'vote' }, ({ payload }) => {
+        const v = payload as { poll_id: string; choice: number }
         if (!pollIds.has(v.poll_id)) return
         setPolls(prev => prev.map(p => {
           if (p.id !== v.poll_id) return p
@@ -913,7 +924,32 @@ export default function Home() {
         </div>
       )}
 
-      {!loading && polls.length === 0 && (
+      {!loading && fetchError && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: 14, padding: '0 24px', textAlign: 'center',
+        }}>
+          <p style={{ margin: 0, color: textColor, fontSize: 22, fontWeight: 600, fontFamily: serif }}>
+            Lost contact with the cosmos
+          </p>
+          <p style={{ margin: 0, color: subColor, fontSize: 14, maxWidth: 320, lineHeight: 1.55 }}>
+            We couldn&apos;t load the polls right now. Check your connection and try again.
+          </p>
+          <button onClick={() => setRetryKey(k => k + 1)} style={{
+            background: day ? '#2a1a5e' : '#f5f0e8',
+            color: day ? '#fff' : '#1a0e3a',
+            border: 'none', borderRadius: 100,
+            padding: '12px 28px', fontSize: 14, fontWeight: 700,
+            cursor: 'pointer', fontFamily: 'inherit', marginTop: 4,
+          }}>
+            Try again
+          </button>
+        </div>
+      )}
+
+      {!loading && !fetchError && polls.length === 0 && (
         <div style={{
           position: 'absolute', inset: 0,
           display: 'flex', flexDirection: 'column',
@@ -1473,7 +1509,7 @@ export default function Home() {
                           await fetch('/api/report', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ poll_id: modal.poll.id }),
+                            body: JSON.stringify({ poll_id: modal.poll.id, fingerprint }),
                           })
                           alert('Thanks — we\'ll review it.')
                         }}
